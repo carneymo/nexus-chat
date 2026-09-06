@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Headphones, Mic, MicOff, PhoneOff } from 'lucide-react';
+import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff } from 'lucide-react';
 import {
   VoiceConnection,
   type VoiceMember,
@@ -20,6 +20,7 @@ export function VoicePanel({
   const [view, setView] = useState<VoiceView>({
     joined: false,
     muted: false,
+    deafened: false,
     members: [],
     connections: {},
     error: '',
@@ -66,6 +67,20 @@ export function VoicePanel({
               >
                 {view.muted ? <MicOff size={14} /> : <Mic size={14} />}
                 {view.muted ? 'Unmute' : 'Mute'}
+              </button>
+              <button
+                type="button"
+                className={view.deafened ? 'voice-muted' : ''}
+                aria-pressed={view.deafened}
+                title="Silence incoming voices. Your microphone stays unchanged."
+                onClick={() => connection.current?.deafen(!view.deafened)}
+              >
+                {view.deafened ? (
+                  <HeadphoneOff size={14} />
+                ) : (
+                  <Headphones size={14} />
+                )}
+                {view.deafened ? 'Undeafen' : 'Deafen'}
               </button>
               <button type="button" onClick={() => connection.current?.stop()}>
                 <PhoneOff size={14} /> Leave
@@ -119,7 +134,13 @@ export function VoicePanel({
           </span>
         )}
       </div>
-      {view.playbackBlocked && (
+      {view.deafened && (
+        <output className="voice-deafened">
+          Incoming voices silenced · Your microphone is{' '}
+          {view.muted ? 'muted' : 'still on'}
+        </output>
+      )}
+      {!view.deafened && view.playbackBlocked && (
         <button
           className="voice-enable-audio"
           onClick={() => void connection.current?.resumeAudio()}

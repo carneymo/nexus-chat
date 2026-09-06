@@ -8,6 +8,8 @@ import {
 } from 'react';
 import {
   Radio,
+  Headphones,
+  MicOff,
   Users,
   Plus,
   LogIn,
@@ -303,6 +305,11 @@ export default function Home() {
       .filter((event) => event.recipient === (recipient?.id ?? null))
       .map((event) => ({ kind: 'event' as const, ...event })),
   ].sort((a, b) => a.createdAt - b.createdAt);
+  const voiceByUser = new Map(
+    (state.voice || [])
+      .filter((person) => person.channel === channel)
+      .map((person) => [person.userId, person]),
+  );
   const whisperCount = state.messages.filter(
     (message) => message.recipient === state.me?.id,
   ).length;
@@ -628,6 +635,28 @@ export default function Home() {
                             : 'In the channel'}
                         </small>
                       </span>
+                      {voiceByUser.has(member.id) && (
+                        <span
+                          className="member-voice"
+                          title={
+                            voiceByUser.get(member.id)?.muted
+                              ? 'In voice — microphone muted'
+                              : 'In voice'
+                          }
+                          aria-label={
+                            voiceByUser.get(member.id)?.muted
+                              ? 'In voice — microphone muted'
+                              : 'In voice'
+                          }
+                        >
+                          {voiceByUser.get(member.id)?.muted ? (
+                            <MicOff size={15} />
+                          ) : (
+                            <Headphones size={15} />
+                          )}
+                          <span>Voice</span>
+                        </span>
+                      )}
                       <Signal className="signal" size={17} />
                     </button>
                   ))}

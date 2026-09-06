@@ -35,7 +35,7 @@ void test('voice client releases microphone, mutes immediately, and closes on st
     close() {
       this.closed = true;
     }
-    roster() {
+    roster(others: string[] = []) {
       this.handlers.get('roster')?.({
         data: JSON.stringify([
           {
@@ -45,14 +45,37 @@ void test('voice client releases microphone, mutes immediately, and closes on st
             channel: 'Lobby',
             muted: false,
           },
+          ...others.map((id) => ({
+            id,
+            userId: id,
+            name: id,
+            channel: 'Lobby',
+            muted: false,
+          })),
         ]),
       });
     }
   }
+  const outputs: FakeAudio[] = [];
+  class FakeAudio {
+    autoplay = false;
+    muted = false;
+    srcObject = null;
+    constructor() {
+      outputs.push(this);
+    }
+    pause() {}
+  }
+  class FakePeer {
+    addTrack() {}
+    close() {}
+  }
   let view: VoiceView | undefined;
   let client: VoiceConnection | undefined;
   try {
-    replace('window', { RTCPeerConnection: class {} });
+    replace('window', { RTCPeerConnection: FakePeer });
+    replace('RTCPeerConnection', FakePeer);
+    replace('Audio', FakeAudio);
     replace('navigator', {
       mediaDevices: {
         getUserMedia: async () => ({
@@ -89,7 +112,32 @@ void test('voice client releases microphone, mutes immediately, and closes on st
     );
     await client.mute(false);
     assert.equal(track.enabled, true);
+    instances[0].roster(['peer1']);
+    assert.equal(outputs[0].muted, false);
+    client.deafen(true);
+    assert.equal(view?.deafened, true);
+    assert.equal(outputs[0].muted, true);
+    assert.equal(track.enabled, true, 'Deafen must not change the microphone');
+    instances[0].roster(['peer1', 'peer2']);
+    assert.equal(
+      outputs[1].muted,
+      true,
+      'New participants must also be silenced',
+    );
+    await client.mute(true);
+    client.deafen(false);
+    assert.equal(
+      outputs.every((audio) => !audio.muted),
+      true,
+    );
+    assert.equal(
+      track.enabled,
+      false,
+      'Undeafen must preserve explicit microphone mute',
+    );
+    client.deafen(true);
     instances[0].onerror?.();
+    assert.equal(view?.deafened, false);
     assert.equal(stopped, 1);
     assert.equal(instances[0].closed, true);
     assert.equal(view?.joined, false);

@@ -8,6 +8,7 @@ export type VoiceMember = {
 export type VoiceView = {
   joined: boolean;
   muted: boolean;
+  deafened: boolean;
   members: VoiceMember[];
   connections: Record<string, string>;
   error: string;
@@ -51,6 +52,7 @@ export class VoiceConnection {
   private view: VoiceView = {
     joined: false,
     muted: false,
+    deafened: false,
     members: [],
     connections: {},
     error: '',
@@ -160,6 +162,7 @@ export class VoiceConnection {
     });
     const audio = new Audio();
     audio.autoplay = true;
+    audio.muted = this.view.deafened;
     const peer: Peer = {
       pc,
       audio,
@@ -270,6 +273,12 @@ export class VoiceConnection {
       this.fail('Unable to update microphone state. Voice was disconnected.');
     }
   }
+  deafen(deafened: boolean) {
+    if (this.stopped || !this.view.joined) return;
+    this.view.deafened = deafened;
+    for (const peer of this.peers.values()) peer.audio.muted = deafened;
+    this.publish();
+  }
   async resumeAudio() {
     const results = await Promise.allSettled(
       [...this.peers.values()]
@@ -321,6 +330,7 @@ export class VoiceConnection {
       members: [],
       connections: {},
       muted: false,
+      deafened: false,
     };
     this.publish();
   }

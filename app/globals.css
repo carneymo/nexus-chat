@@ -1501,3 +1501,23 @@ button:hover {
     padding: 6px;
   }
 }
+
+.member-voice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #a8d889;
+  flex-shrink: 0;
+  font-size: 9px;
+}
+.voice-actions {
+  flex-wrap: wrap;
+}
+.voice-deafened {
+  color: #f1d17e;
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.voice-deafened { display: block; }

@@ -183,3 +183,5 @@ networks, confirm two-way audio, mute/unmute, then test leaving, closing a tab a
 switching channels. If the browser blocks playback, click **Enable incoming audio**.
 Automated tests cover voice authorization, cross-channel signal rejection, roster,
 mute, cleanup and microphone lifecycle; they do not replace a real audio test.
+
+Voice controls also include **Deafen / Undeafen**, which silences incoming voices locally, including newly joined participants. It does not mute your microphone; use **Mute** separately for private conversations. Leaving voice resets Deafen. The right-hand member list marks voice participants and microphone mute status.
