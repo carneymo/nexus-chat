@@ -1008,6 +1008,7 @@ export default function Home() {
                 .map((member) => (
                   <button
                     key={member.id}
+                    className={member.online ? 'friend-online' : 'friend-offline'}
                     onClick={() => {
                       setRecipient(member);
                       setPanel(null);

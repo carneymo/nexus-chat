@@ -1793,3 +1793,7 @@ button:hover {
 }
 
 @media (min-width: 801px) { .panel-header .mobile-channel-actions { display: none; } }
+
+.channel-list .friend-online small { color: #a8d889; }
+.channel-list .friend-offline small, .channel-list .friend-offline > span { color: #a2a49e; }
+.channel-list .friend-offline .led { background: #858981; box-shadow: none; }
