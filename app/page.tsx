@@ -169,7 +169,7 @@ export default function Home() {
       field.style.height =
         Math.min(112, Math.max(44, field.scrollHeight + 2)) + 'px';
     }
-  }, [draft]);
+  }, [draft, viewport]);
   useEffect(() => {
     soundRef.current = sound;
   }, [sound]);

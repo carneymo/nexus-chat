@@ -1791,3 +1791,5 @@ button:hover {
     gap: 10px;
   }
 }
+
+@media (min-width: 801px) { .panel-header .mobile-channel-actions { display: none; } }
