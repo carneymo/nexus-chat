@@ -1413,3 +1413,91 @@ button:hover {
   outline: 2px solid #f1d17e;
   outline-offset: 3px;
 }
+
+.voice-panel {
+  flex-shrink: 0;
+  background: #1c261a;
+  border-bottom: 1px solid #626246;
+  padding: 7px 12px;
+  color: #bed1a3;
+  font-family: monospace;
+  font-size: 12px;
+}
+.voice-controls,
+.voice-heading,
+.voice-actions,
+.voice-person {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.voice-controls {
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.voice-heading {
+  color: #d7d0a1;
+}
+.voice-heading small {
+  color: #9cad82;
+}
+.voice-actions button,
+.voice-enable-audio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px outset #8b8160;
+  background: linear-gradient(#4e513b, #303823);
+  color: #ead7a1;
+}
+.voice-actions button:hover {
+  background: #4d583b;
+}
+.voice-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.voice-actions .voice-muted {
+  color: #f3b09e;
+  background: #47352b;
+}
+.voice-actions button:focus-visible {
+  outline: 2px solid #f1d17e;
+  outline-offset: 2px;
+}
+.voice-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  padding-top: 6px;
+  max-height: 88px;
+  overflow-y: auto;
+}
+.voice-person {
+  gap: 4px;
+}
+.voice-person small {
+  color: #dfc28b;
+  font-size: 10px;
+}
+.voice-empty {
+  color: #97a788;
+  font-size: 11px;
+}
+.voice-error {
+  color: #f1b5a7;
+  margin: 6px 0 0;
+}
+.voice-enable-audio {
+  margin-top: 6px;
+}
+@media (max-width: 480px) {
+  .voice-panel {
+    padding: 6px;
+  }
+  .voice-actions button {
+    padding: 6px;
+  }
+}

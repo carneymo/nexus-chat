@@ -12,9 +12,10 @@ import {
 } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { resolve, sep, extname } from 'node:path';
+import { createVoice, type VoiceConfig } from './voice.ts';
 import { createStore, type User } from './store.ts';
 
-export type Config = {
+export type Config = VoiceConfig & {
   databasePath: string;
   staticPath: string;
   inviteCode: string;
@@ -59,6 +60,20 @@ export function createApp(config: Config) {
   const db = createStore(config.databasePath);
   const clients = new Set<Client>();
   const limits = new Map<string, { count: number; until: number }>();
+  const voice = createVoice(config, {
+    body,
+    json,
+    fail,
+    changed: broadcast,
+    sessionValid: (hash) =>
+      Boolean(
+        db
+          .prepare(
+            'SELECT 1 FROM sessions WHERE token_hash = ? AND expires > ?',
+          )
+          .get(hash, Date.now()),
+      ),
+  });
   let activeHashes = 0;
   function rate(key: string, max: number, duration: number) {
     const now = Date.now();
@@ -129,7 +144,7 @@ export function createApp(config: Config) {
     const messages = [...publicMessages, ...whispers].sort(
       (a, b) => Number(a.id) - Number(b.id),
     );
-    return { ...base, me, members, messages };
+    return { ...base, me, members, messages, voice: voice.roster() };
   }
   function event(client: Client, kind: string, value: unknown) {
     if (client.response.destroyed) return;
@@ -329,6 +344,11 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        if (pathname.startsWith('/api/voice/')) {
+          rate(`voice:${session.user.id}`, 400, 60_000);
+          await voice.handle(pathname, request, response, session);
+          return;
+        }
         if (pathname === '/api/events' && request.method === 'GET') {
           if (
             [...clients].filter(
@@ -371,6 +391,7 @@ export function createApp(config: Config) {
         }
         if (pathname === '/api/logout' && request.method === 'POST') {
           await body(request);
+          voice.removeSession(session.hash);
           db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(
             session.hash,
           );
@@ -403,6 +424,8 @@ export function createApp(config: Config) {
             db.prepare('INSERT INTO channels(name) VALUES (?)').run(name);
             target = { name };
           }
+          if (session.user.channel !== target.name)
+            voice.removeUser(session.user.id);
           db.prepare('UPDATE users SET channel = ? WHERE id = ?').run(
             target.name,
             session.user.id,
@@ -550,6 +573,7 @@ export function createApp(config: Config) {
   heartbeat.unref();
   async function close() {
     clearInterval(heartbeat);
+    voice.close();
     for (const client of clients) client.response.destroy();
     await new Promise<void>((resolve) => {
       server.close(() => resolve());

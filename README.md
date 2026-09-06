@@ -131,3 +131,55 @@ Lint covers application code and the UI primitives used by Nexus. Unused generat
 The Windows build wrapper preserves failure exit codes and gives successful native build-worker cleanup one second before exiting, avoiding a Node 24/Vinext beta shutdown assertion. Linux uses normal exit behavior.
 
 Browser interaction and Docker runtime tests were not performed in this session; Docker's daemon was unavailable. The optional WebMCP draft-staging tool is feature-detected and never sends messages; a supported validation context was unavailable. A production host and domain have not been provisioned.
+
+## Voice chat
+
+Voice is opt-in per channel: **Join voice**, allow microphone access, then use
+**Mute / Unmute** and **Leave**. The voice bar lists participants and mute state.
+Whispers do not create a private voice call: the voice bar always belongs to the
+current channel. Changing channels, signing out, closing the tab, losing the
+voice connection, or unplugging the microphone ends the local voice session.
+Keep the browser tab open while gaming. Mute is an in-page control, not a global
+keyboard shortcut. Use headphones to avoid speaker feedback.
+
+The initial limit is eight people per channel and one voice connection per account.
+Audio uses WebRTC DTLS-SRTP between participants, relayed through authenticated
+coturn; the app stores neither audio nor signaling history. Relay-only ICE avoids
+exposing participants' direct IP candidates to each other. HTTPS carries signaling.
+This is separate from text encryption: stored text messages remain readable to the
+server. Muting disables the local microphone track; incoming audio remains audible.
+
+### Lightsail voice setup
+
+Run from the checked-out repository on Ubuntu:
+
+```sh
+sudo bash scripts/setup-turn.sh nexus-chat.net YOUR_STATIC_PUBLIC_IPV4
+sudo docker compose up -d --build
+```
+
+Open Lightsail **TCP 3478**, **UDP 3478**, and **UDP 49160–49300**. The script also
+adds matching rules if UFW is active. It installs coturn, restricts private-network
+relay destinations, and generates a shared secret into `.env` and
+`/etc/turnserver.conf`; never commit either file. It preserves an existing
+`TURN_SECRET`. The API issues authenticated users TURN credentials valid for 24 hours.
+Join voice again after 24 hours if ICE needs a new allocation. Changing the secret
+invalidates credentials used by existing calls; plan rotations as maintenance.
+
+For another TURN provider set `TURN_URLS` (comma-separated TURN URLs) and
+`TURN_SECRET` (coturn REST shared secret) in `.env` instead. A missing relay
+configuration disables joining with an explicit error. The default deployment
+supports UDP and TCP TURN on 3478, but networks that block both need a separately
+configured TURN/TLS endpoint, typically on 443. Caddy already owns this server's 443.
+
+Check `sudo systemctl status coturn` and `sudo journalctl -u coturn` to diagnose relay
+issues. Voice consumes Lightsail bandwidth and a mesh uses one stream per pair;
+consider an SFU before raising the eight-person limit. Server restarts end active
+voice sessions; users must rejoin. Membership leases remove unreachable clients
+within approximately three minutes. No database migration is required.
+
+Verification before relying on a game session: join from two accounts on different
+networks, confirm two-way audio, mute/unmute, then test leaving, closing a tab and
+switching channels. If the browser blocks playback, click **Enable incoming audio**.
+Automated tests cover voice authorization, cross-channel signal rejection, roster,
+mute, cleanup and microphone lifecycle; they do not replace a real audio test.

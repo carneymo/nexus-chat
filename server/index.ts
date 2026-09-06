@@ -16,6 +16,10 @@ const app = createApp({
   secureCookies: production,
   serverName: process.env.SERVER_NAME || 'Nexus',
   log: true,
+  turnUrls: process.env.TURN_URLS?.split(',')
+    .map((url) => url.trim())
+    .filter(Boolean),
+  turnSecret: process.env.TURN_SECRET,
 });
 app.server.listen(port, process.env.HOST || '127.0.0.1', () =>
   console.log(`Nexus gateway listening on port ${port}`),

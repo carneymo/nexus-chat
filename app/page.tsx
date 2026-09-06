@@ -30,6 +30,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { VoicePanel } from '@/components/voice-panel';
+import type { VoiceMember } from '@/lib/voice-client';
 import { messageLinks } from '@/lib/message-links';
 import { cue } from '@/lib/audio';
 import { LegacyScrollArea } from '@/components/legacy-scroll-area';
@@ -52,6 +54,7 @@ type ChatEvent = {
   recipient: string | null;
 };
 type State = {
+  voice?: VoiceMember[];
   me: Member | null;
   channels: string[];
   members: Member[];
@@ -426,6 +429,12 @@ export default function Home() {
               </div>
               <span className="header-count">{roster.length} online</span>
             </header>
+            <VoicePanel
+              key={`${viewerId}-${channel}`}
+              channel={channel}
+              userId={viewerId}
+              members={state.voice || []}
+            />
             <LegacyScrollArea
               className="chat-screen"
               viewportRef={log}
