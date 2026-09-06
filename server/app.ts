@@ -154,7 +154,8 @@ export function createApp(config: Config) {
     filter: (client: Client) => boolean,
   ) {
     for (const client of clients)
-      if (filter(client)) event(client, 'notice', { text, kind });
+      if (filter(client))
+        event(client, 'notice', { text, kind, createdAt: Date.now() });
   }
   const currentChannel = (client: Client) =>
     (

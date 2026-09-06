@@ -44,6 +44,12 @@ type Message = {
   recipient: string | null;
   createdAt: number;
 };
+type ChatEvent = {
+  id: string;
+  text: string;
+  createdAt: number;
+  recipient: string | null;
+};
 type State = {
   me: Member | null;
   channels: string[];
@@ -88,7 +94,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [sound, setSound] = useState(true);
   const [scanlines, setScanlines] = useState(true);
-  const [events, setEvents] = useState<string[]>([]);
+  const [events, setEvents] = useState<ChatEvent[]>([]);
   const [clock, setClock] = useState('--:--');
   const [date, setDate] = useState('TODAY');
   const log = useRef<HTMLDivElement>(null);
@@ -156,7 +162,15 @@ export default function Home() {
     });
     stream.addEventListener('notice', (event) => {
       const data = JSON.parse(event.data);
-      setEvents((previous) => [...previous.slice(-19), data.text]);
+      setEvents((previous) => [
+        ...previous.slice(-19),
+        {
+          id: crypto.randomUUID(),
+          text: data.text,
+          createdAt: data.createdAt ?? Date.now(),
+          recipient: null,
+        },
+      ]);
       cue(data.kind === 'join' ? 'join' : 'message', soundRef.current);
     });
     return () => {
@@ -170,6 +184,17 @@ export default function Home() {
       behavior: 'smooth',
     });
   }, [state.messages.length, channel, recipient?.id, events.length]);
+  function addEvent(text: string) {
+    setEvents((previous) => [
+      ...previous.slice(-19),
+      {
+        id: crypto.randomUUID(),
+        text,
+        createdAt: Date.now(),
+        recipient: recipient?.id ?? null,
+      },
+    ]);
+  }
   async function act(action: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -211,10 +236,7 @@ export default function Home() {
     const text = draft.trim();
     if (!text) return;
     if (text === '/help') {
-      setEvents((previous) => [
-        ...previous,
-        '/join channel · /w callsign message · /help',
-      ]);
+      addEvent('/join channel · /w callsign message · /help');
       setDraft('');
       return;
     }
@@ -254,6 +276,12 @@ export default function Home() {
             message.recipient === recipient.id))
       : !message.recipient && message.channel === channel,
   );
+  const timeline = [
+    ...messages.map((message) => ({ kind: 'message' as const, ...message })),
+    ...events
+      .filter((event) => event.recipient === (recipient?.id ?? null))
+      .map((event) => ({ kind: 'event' as const, ...event })),
+  ].sort((a, b) => a.createdAt - b.createdAt);
   const whisperCount = state.messages.filter(
     (message) => message.recipient === state.me?.id,
   ).length;
@@ -420,38 +448,39 @@ export default function Home() {
                     : 'Choose Connect to enter your callsign and join the channel.'}
                 </p>
               </div>
-              {messages.map((message) => (
-                <div
-                  className={`message ${message.recipient ? 'private-message' : ''}`}
-                  key={message.id}
-                >
-                  <time title={new Date(message.createdAt).toLocaleString()}>
-                    {new Date(message.createdAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: false,
-                    })}
-                  </time>
-                  <div>
-                    <button
-                      className="callsign"
-                      onClick={() => {
-                        const member = state.members.find(
-                          (member) => member.id === message.userId,
-                        );
-                        if (member && member.id !== state.me?.id)
-                          setRecipient(member);
-                      }}
-                    >{`<${message.name}>`}</button>{' '}
-                    <span>{message.text}</span>
+              {timeline.map((message) =>
+                message.kind === 'event' ? (
+                  <p className="event-line" key={message.id}>
+                    » {message.text}
+                  </p>
+                ) : (
+                  <div
+                    className={`message ${message.recipient ? 'private-message' : ''}`}
+                    key={message.id}
+                  >
+                    <time title={new Date(message.createdAt).toLocaleString()}>
+                      {new Date(message.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                    </time>
+                    <div>
+                      <button
+                        className="callsign"
+                        onClick={() => {
+                          const member = state.members.find(
+                            (member) => member.id === message.userId,
+                          );
+                          if (member && member.id !== state.me?.id)
+                            setRecipient(member);
+                        }}
+                      >{`<${message.name}>`}</button>{' '}
+                      <span>{message.text}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
-              {events.map((event, index) => (
-                <p className="event-line" key={`${event}-${index}`}>
-                  » {event}
-                </p>
-              ))}
+                ),
+              )}
               {!state.me && (
                 <button
                   className="connect-inline"
@@ -505,10 +534,7 @@ export default function Home() {
                 <kbd>ENTER</kbd> to send <span className="help-divider">/</span>{' '}
                 <button
                   onClick={() =>
-                    setEvents((previous) => [
-                      ...previous,
-                      '/join channel · /w callsign message · /help',
-                    ])
+                    addEvent('/join channel · /w callsign message · /help')
                   }
                 >
                   /help
@@ -596,10 +622,9 @@ export default function Home() {
                 onClick={() =>
                   void act(async () => {
                     await navigator.clipboard.writeText(window.location.origin);
-                    setEvents((previous) => [
-                      ...previous,
+                    addEvent(
                       'Gateway link copied. Share the invite code separately.',
-                    ]);
+                    );
                   })
                 }
               >
