@@ -50,7 +50,7 @@ void test(
     }
     async function login(name: string) {
       return (
-        await request('login', '', {
+        await request('register', '', {
           name,
           password: 'test-long-password',
           invite: 'long-test-invite-code',

@@ -1792,8 +1792,79 @@ button:hover {
   }
 }
 
-@media (min-width: 801px) { .panel-header .mobile-channel-actions { display: none; } }
+@media (min-width: 801px) {
+  .panel-header .mobile-channel-actions {
+    display: none;
+  }
+}
 
-.channel-list .friend-online small { color: #a8d889; }
-.channel-list .friend-offline small, .channel-list .friend-offline > span { color: #a2a49e; }
-.channel-list .friend-offline .led { background: #858981; box-shadow: none; }
+.channel-list .friend-online small {
+  color: #a8d889;
+}
+.channel-list .friend-offline small,
+.channel-list .friend-offline > span {
+  color: #a2a49e;
+}
+.channel-list .friend-offline .led {
+  background: #858981;
+  box-shadow: none;
+}
+
+.auth-mode {
+  display: flex;
+  gap: 8px;
+}
+.auth-mode button {
+  flex: 1;
+  padding: 10px;
+  background: #252e1e;
+  border: 1px solid #62634b;
+  color: #bccba6;
+}
+.auth-mode button[aria-pressed='true'] {
+  color: #f1d17e;
+  border-color: #b5a064;
+  background: #414733;
+}
+.profile-card {
+  padding: 12px 0;
+  border-bottom: 1px solid #555a3c;
+  margin-bottom: 14px;
+}
+.profile-card h3 {
+  font-size: 20px;
+  margin: 0;
+}
+.profile-card > p {
+  color: #a5b395;
+  font: 13px monospace;
+  margin: 5px 0 16px;
+}
+.profile-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0;
+  border: 0;
+}
+.profile-colors label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 42px;
+  min-height: 42px;
+  cursor: pointer;
+}
+.profile-colors input {
+  width: auto;
+}
+.profile-colors label > span:not(.sr-only) {
+  font-size: 24px;
+}
+@media (min-width: 801px) {
+  .command-rail {
+    grid-template-rows: repeat(2, var(--rail-button-height)) 2px var(
+        --rail-button-height
+      ) minmax(0, 1fr) repeat(2, var(--rail-button-height)) 20px;
+  }
+}

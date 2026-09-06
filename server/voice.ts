@@ -62,6 +62,11 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
     person.response?.end();
     changed();
   }
+  function renameUser(userId: string, name: string) {
+    for (const person of people.values())
+      if (person.userId === userId) person.name = name;
+    changed();
+  }
   function removeUser(userId: string) {
     for (const person of people.values())
       if (person.userId === userId) remove(person.id);
@@ -217,5 +222,5 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
     people.clear();
     for (const person of active) person.response?.destroy();
   }
-  return { handle, roster, removeUser, removeSession, close };
+  return { handle, roster, removeUser, removeSession, renameUser, close };
 }

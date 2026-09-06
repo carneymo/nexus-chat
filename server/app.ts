@@ -123,14 +123,14 @@ export function createApp(config: Config) {
     const members = (
       db
         .prepare(
-          'SELECT id, name, channel FROM users ORDER BY name COLLATE NOCASE',
+          'SELECT id, COALESCE(display_name, name) AS name, name AS handle, color, channel FROM users ORDER BY name COLLATE NOCASE',
         )
         .all() as Pick<User, 'id' | 'name' | 'channel'>[]
     ).map((user) => ({ ...user, online: online(user.id) }));
     const me = members.find((member) => member.id === id) ?? null;
     if (!me) return { ...base, me: null, members: [], messages: [] };
     const columns =
-      'm.id, u.name, m.user_id AS userId, m.channel, m.recipient, m.text, m.created_at AS createdAt';
+      'm.id, COALESCE(u.display_name, u.name) AS name, u.name AS handle, u.color, m.user_id AS userId, m.channel, m.recipient, m.text, m.created_at AS createdAt';
     const publicMessages = db
       .prepare(
         `SELECT ${columns} FROM messages m JOIN users u ON u.id = m.user_id WHERE m.channel = ? AND m.recipient IS NULL ORDER BY m.id DESC LIMIT 200`,
@@ -259,7 +259,10 @@ export function createApp(config: Config) {
           json(response, 200, stateFor(session?.user.id));
           return;
         }
-        if (pathname === '/api/login' && request.method === 'POST') {
+        if (
+          (pathname === '/api/login' || pathname === '/api/register') &&
+          request.method === 'POST'
+        ) {
           rate(`login:${ip}`, 30, 15 * 60_000);
           const data = await body(request);
           const name = typeof data.name === 'string' ? data.name.trim() : '';
@@ -288,6 +291,13 @@ export function createApp(config: Config) {
           } finally {
             activeHashes--;
           }
+          if (pathname === '/api/register' && user)
+            fail(
+              409,
+              'That account handle is already registered. Sign in instead.',
+            );
+          if (pathname === '/api/login' && !user)
+            fail(401, 'Account handle or password is incorrect.');
           if (user) {
             if (!same(hash, user.password_hash))
               fail(401, 'Callsign, password, or invite code is incorrect.');
@@ -344,9 +354,55 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        if (pathname === '/api/profile' && request.method === 'POST') {
+          rate(`profile:${session.user.id}`, 20, 60000);
+          const data = await body(request);
+          const name =
+            typeof data.displayName === 'string' ? data.displayName.trim() : '';
+          const colors = [
+            '#83d9ef',
+            '#f2a5c5',
+            '#b7b0ff',
+            '#96dfa9',
+            '#ffb58a',
+            '#b4d5ff',
+            '#e2bfef',
+            '#f1d17e',
+          ];
+          if (
+            name.length < 2 ||
+            name.length > 32 ||
+            /[<>\p{Cc}\p{Cf}]/u.test(name)
+          )
+            fail(
+              400,
+              'Use a display name of 2–32 characters without control characters or angle brackets.',
+            );
+          if (typeof data.color !== 'string' || !colors.includes(data.color))
+            fail(400, 'Choose a color from the palette.');
+          db.prepare(
+            'UPDATE users SET display_name = ?, color = ? WHERE id = ?',
+          ).run(name, data.color, session.user.id);
+          voice.renameUser(session.user.id, name);
+          json(response, 200, { ok: true });
+          broadcast();
+          return;
+        }
         if (pathname.startsWith('/api/voice/')) {
           rate(`voice:${session.user.id}`, 400, 60_000);
-          await voice.handle(pathname, request, response, session);
+          await voice.handle(pathname, request, response, {
+            ...session,
+            user: {
+              ...session.user,
+              name: String(
+                db
+                  .prepare(
+                    'SELECT COALESCE(display_name, name) AS name FROM users WHERE id = ?',
+                  )
+                  .get(session.user.id)!.name,
+              ),
+            },
+          });
           return;
         }
         if (pathname === '/api/events' && request.method === 'GET') {

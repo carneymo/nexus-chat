@@ -13,7 +13,6 @@ import {
   MicOff,
   Users,
   Plus,
-  LogIn,
   Settings,
   Power,
   Volume2,
@@ -40,7 +39,14 @@ import { cue } from '@/lib/audio';
 import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
 
-type Member = { id: string; name: string; channel: string; online: boolean };
+type Member = {
+  handle?: string;
+  color?: string;
+  id: string;
+  name: string;
+  channel: string;
+  online: boolean;
+};
 type Message = {
   id: number;
   name: string;
@@ -64,8 +70,15 @@ type State = {
   messages: Message[];
   serverName: string;
 };
-type Panel = 'connect' | 'channels' | 'create' | 'friends' | 'settings' | null;
-// Reserve gold for the viewer; other accounts keep a stable color across conversations.
+type Panel =
+  | 'connect'
+  | 'channels'
+  | 'create'
+  | 'friends'
+  | 'settings'
+  | 'profile'
+  | null;
+// Accounts without a chosen profile color use the same stable fallback for every viewer.
 const callsignColors = [
   '#83d9ef',
   '#f2a5c5',
@@ -75,8 +88,7 @@ const callsignColors = [
   '#b4d5ff',
   '#e2bfef',
 ];
-function callsignColor(id: string, viewerId?: string) {
-  if (id === viewerId) return '#f1d17e';
+function callsignColor(id: string) {
   let hash = 0;
   for (const character of id)
     hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
@@ -109,6 +121,8 @@ async function api<T = { ok: boolean }>(
 
 export default function Home() {
   const [state, setState] = useState<State>(initial);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [viewport, setViewport] = useState({
     height: 0,
@@ -118,7 +132,10 @@ export default function Home() {
   const [panel, setPanel] = useState<Panel>(null);
   const [connected, setConnected] = useState(false);
   const [channel, setChannel] = useState('The Lobby');
-  const [recipient, setRecipient] = useState<Member | null>(null);
+  const [selectedRecipient, setRecipient] = useState<Member | null>(null);
+  const recipient =
+    state.members.find((member) => member.id === selectedRecipient?.id) ||
+    selectedRecipient;
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -322,7 +339,9 @@ export default function Home() {
       if (text.startsWith('/w ')) {
         const [, name, ...words] = text.split(' ');
         const member = state.members.find(
-          (member) => member.name.toLowerCase() === name?.toLowerCase(),
+          (member) =>
+            (member.handle || member.name).toLowerCase() ===
+            name?.toLowerCase(),
         );
         if (!member || member.id === state.me?.id)
           throw new Error('Choose another member’s callsign to whisper.');
@@ -445,7 +464,7 @@ export default function Home() {
               onClick={() => open('channels')}
             >
               <Radio />
-              <span>Channel</span>
+              <span>Channels</span>
               <small>01</small>
             </button>
             <button className="metal-button" onClick={() => open('friends')}>
@@ -462,14 +481,7 @@ export default function Home() {
               <span>Create</span>
               <small>03</small>
             </button>
-            <button
-              className="metal-button"
-              onClick={() => open(state.me ? 'channels' : 'connect')}
-            >
-              <LogIn />
-              <span>Join</span>
-              <small>04</small>
-            </button>
+
             <div className="rail-spacer" />
             <button className="metal-button" onClick={() => open('settings')}>
               <Settings />
@@ -606,14 +618,19 @@ export default function Home() {
                       <button
                         className="callsign"
                         style={{
-                          color: callsignColor(message.userId, viewerId),
+                          color:
+                            state.members.find(
+                              (member) => member.id === message.userId,
+                            )?.color || callsignColor(message.userId),
                         }}
                         onClick={() => {
                           const member = state.members.find(
                             (member) => member.id === message.userId,
                           );
-                          if (member && member.id !== state.me?.id)
-                            setRecipient(member);
+                          if (member) {
+                            setProfileId(member.id);
+                            open('profile');
+                          }
                         }}
                       >{`<${message.name}>`}</button>{' '}
                       <span>
@@ -742,7 +759,9 @@ export default function Home() {
                       </span>
                       <span
                         className="member-name"
-                        style={{ color: callsignColor(member.id, viewerId) }}
+                        style={{
+                          color: member.color || callsignColor(member.id),
+                        }}
                       >
                         {member.name}
                         <small>
@@ -881,18 +900,22 @@ export default function Home() {
         <DialogContent className="nexus-dialog">
           <DialogTitle>
             {panel === 'connect'
-              ? 'Establish connection'
+              ? authMode === 'register'
+                ? 'Create account'
+                : 'Welcome back'
               : panel === 'channels'
                 ? 'Select channel'
                 : panel === 'create'
                   ? 'Create channel'
                   : panel === 'friends'
                     ? 'Your friends'
-                    : 'Terminal options'}
+                    : panel === 'profile'
+                      ? 'Member profile'
+                      : 'Terminal options'}
           </DialogTitle>
           <DialogDescription>
             {panel === 'connect'
-              ? 'Choose a callsign. Your password keeps it yours.'
+              ? 'One account keeps your identity and history together.'
               : panel === 'channels'
                 ? 'Find a place for your next conversation.'
                 : panel === 'create'
@@ -908,15 +931,40 @@ export default function Home() {
                 event.preventDefault();
                 const fields = new FormData(event.currentTarget);
                 void act(async () => {
-                  await api('login', Object.fromEntries(fields));
+                  await api(authMode, {
+                    ...Object.fromEntries(fields),
+                    mode: authMode,
+                  });
                   await refresh();
                   setPanel(null);
                   cue('join', sound);
                 });
               }}
             >
+              <div className="auth-mode">
+                <button
+                  type="button"
+                  aria-pressed={authMode === 'login'}
+                  onClick={() => {
+                    setAuthMode('login');
+                    setError('');
+                  }}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={authMode === 'register'}
+                  onClick={() => {
+                    setAuthMode('register');
+                    setError('');
+                  }}
+                >
+                  Create account
+                </button>
+              </div>
               <label>
-                Callsign
+                Account handle
                 <input
                   name="name"
                   required
@@ -935,26 +983,38 @@ export default function Home() {
                   minLength={10}
                   maxLength={128}
                   required
-                  autoComplete="current-password"
+                  autoComplete={
+                    authMode === 'register'
+                      ? 'new-password'
+                      : 'current-password'
+                  }
                   placeholder="At least 10 characters"
                 />
               </label>
-              <label>
-                Server invite code
-                <input
-                  name="invite"
-                  type="password"
-                  maxLength={128}
-                  placeholder="Required for your first connection"
-                  autoComplete="off"
-                />
-              </label>
+              {authMode === 'register' && (
+                <label>
+                  Server invite code
+                  <input
+                    name="invite"
+                    required
+                    type="password"
+                    maxLength={128}
+                    placeholder="Required only to create your account"
+                    autoComplete="off"
+                  />
+                </label>
+              )}
               <p className="field-help">
-                First time? Your callsign is registered when you connect with an
-                invite code.
+                {authMode === 'register'
+                  ? 'Your account handle stays permanent. You can change your display name later.'
+                  : 'No invite code needed. Your session stays signed in for 30 days.'}
               </p>
               <button className="dialog-action" disabled={busy}>
-                {busy ? 'Connecting…' : 'Connect to gateway'}
+                {busy
+                  ? 'Connecting…'
+                  : authMode === 'register'
+                    ? 'Create account'
+                    : 'Sign in'}
               </button>
             </form>
           )}
@@ -1008,7 +1068,9 @@ export default function Home() {
                 .map((member) => (
                   <button
                     key={member.id}
-                    className={member.online ? 'friend-online' : 'friend-offline'}
+                    className={
+                      member.online ? 'friend-online' : 'friend-offline'
+                    }
                     onClick={() => {
                       setRecipient(member);
                       setPanel(null);
@@ -1017,7 +1079,10 @@ export default function Home() {
                   >
                     <i className={`led ${member.online ? '' : 'offline'}`} />
                     <span>{member.name}</span>
-                    <small>{member.online ? 'Online' : 'Offline'}</small>
+                    <small>
+                      @{member.handle || member.name} ·{' '}
+                      {member.online ? 'Online' : 'Offline'}
+                    </small>
                     <Lock size={14} />
                   </button>
                 ))}
@@ -1030,6 +1095,97 @@ export default function Home() {
               )}
             </div>
           )}
+          {(panel === 'profile' || panel === 'settings') &&
+            (() => {
+              const person =
+                panel === 'settings'
+                  ? state.me
+                  : state.members.find((member) => member.id === profileId);
+              if (!person) return null;
+              return (
+                <div className="profile-card">
+                  <h3
+                    style={{ color: person.color || callsignColor(person.id) }}
+                  >
+                    {person.name}
+                  </h3>
+                  <p>@{person.handle || person.name}</p>
+                  {person.id === state.me?.id ? (
+                    <form
+                      className="dialog-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const fields = new FormData(event.currentTarget);
+                        void act(async () => {
+                          await api('profile', Object.fromEntries(fields));
+                          await refresh();
+                          setPanel(null);
+                        });
+                      }}
+                    >
+                      <label>
+                        Display name
+                        <input
+                          name="displayName"
+                          defaultValue={person.name}
+                          minLength={2}
+                          maxLength={32}
+                          required
+                        />
+                      </label>
+                      <fieldset className="profile-colors">
+                        <legend>Name color</legend>
+                        {[...callsignColors, '#f1d17e'].map((color, index) => (
+                          <label key={color} style={{ color }}>
+                            <input
+                              type="radio"
+                              name="color"
+                              value={color}
+                              defaultChecked={
+                                color ===
+                                (person.color || callsignColor(person.id))
+                              }
+                              required
+                            />
+                            <span>●</span>
+                            <span className="sr-only">
+                              {
+                                [
+                                  'Cyan',
+                                  'Rose',
+                                  'Lavender',
+                                  'Green',
+                                  'Peach',
+                                  'Blue',
+                                  'Lilac',
+                                  'Gold',
+                                ][index]
+                              }
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                      <p className="field-help">
+                        Your account handle and message history stay the same.
+                      </p>
+                      <button className="dialog-action" disabled={busy}>
+                        Save profile
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      className="dialog-action"
+                      onClick={() => {
+                        setRecipient(person);
+                        setPanel(null);
+                      }}
+                    >
+                      Whisper to {person.name}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           {panel === 'settings' && (
             <div className="dialog-form">
               <label className="option-row" htmlFor="sound-toggle">

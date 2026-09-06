@@ -185,3 +185,6 @@ Automated tests cover voice authorization, cross-channel signal rejection, roste
 mute, cleanup and microphone lifecycle; they do not replace a real audio test.
 
 Voice controls also include **Deafen / Undeafen**, which silences incoming voices locally, including newly joined participants. It does not mute your microphone; use **Mute** separately for private conversations. Leaving voice resets Deafen. The right-hand member list marks voice participants and microphone mute status.
+
+## Accounts and profiles
+Use Create account once with the server invite code. Returning users sign in with their existing account handle and password; no invite is needed. The account handle is permanent. Options lets you change your display name and choose a readable name color. Clicking a chat author opens their profile and stable handle. Messages retain their user ID and display the current profile name, including historical messages. Schema version 2 adds nullable display_name and color columns and preserves existing handles, passwords, sessions, and messages. Administration and recovery tools remain deferred.

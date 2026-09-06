@@ -33,8 +33,18 @@ export function createStore(path: string) {
     CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel,id) WHERE recipient IS NULL;
     CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient,id) WHERE recipient IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(user_id,id) WHERE recipient IS NOT NULL;
-    PRAGMA user_version=1;
+
   `);
+  const columns = new Set(
+    db
+      .prepare('PRAGMA table_info(users)')
+      .all()
+      .map((column) => column.name),
+  );
+  if (!columns.has('display_name'))
+    db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+  if (!columns.has('color')) db.exec('ALTER TABLE users ADD COLUMN color TEXT');
+  db.exec('PRAGMA user_version=2');
   for (const name of ['The Lobby', 'After Hours', 'Looking for Group'])
     db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(name);
   db.exec('PRAGMA optimize');

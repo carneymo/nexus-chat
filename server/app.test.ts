@@ -50,11 +50,16 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
     return { response, data: (await response.json()) as TestState };
   }
   async function login(name: string) {
-    const result = await request('login', '', {
+    let result = await request('register', '', {
       name,
       password: 'long-test-password',
       invite: config.inviteCode,
     });
+    if (result.response.status === 409)
+      result = await request('login', '', {
+        name,
+        password: 'long-test-password',
+      });
     assert.equal(result.response.status, 200);
     assert.match(
       result.response.headers.get('set-cookie')!,
