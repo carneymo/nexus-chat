@@ -58,6 +58,23 @@ type State = {
   serverName: string;
 };
 type Panel = 'connect' | 'channels' | 'create' | 'friends' | 'settings' | null;
+// Reserve gold for the viewer; other accounts keep a stable color across conversations.
+const callsignColors = [
+  '#83d9ef',
+  '#f2a5c5',
+  '#b7b0ff',
+  '#96dfa9',
+  '#ffb58a',
+  '#b4d5ff',
+  '#e2bfef',
+];
+function callsignColor(id: string, viewerId?: string) {
+  if (id === viewerId) return '#f1d17e';
+  let hash = 0;
+  for (const character of id)
+    hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
+  return callsignColors[hash % callsignColors.length];
+}
 const initial: State = {
   me: null,
   channels: ['The Lobby', 'After Hours', 'Looking for Group'],
@@ -468,6 +485,9 @@ export default function Home() {
                     <div>
                       <button
                         className="callsign"
+                        style={{
+                          color: callsignColor(message.userId, viewerId),
+                        }}
                         onClick={() => {
                           const member = state.members.find(
                             (member) => member.id === message.userId,
@@ -571,7 +591,10 @@ export default function Home() {
                       <span className="member-avatar">
                         {member.name.slice(0, 2).toUpperCase()}
                       </span>
-                      <span className="member-name">
+                      <span
+                        className="member-name"
+                        style={{ color: callsignColor(member.id, viewerId) }}
+                      >
                         {member.name}
                         <small>
                           {member.id === state.me?.id

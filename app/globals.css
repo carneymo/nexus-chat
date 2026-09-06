@@ -553,6 +553,7 @@ button:hover {
   min-width: 0;
 }
 .callsign {
+  font-weight: 700;
   border: 0;
   background: transparent;
   color: #d2c178;
@@ -564,7 +565,6 @@ button:hover {
   white-space: pre-wrap;
   color: #c7ccba;
 }
-.private-message .callsign,
 .private-message > div > span {
   color: #c5a8d5;
 }
