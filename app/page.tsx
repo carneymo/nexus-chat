@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cue } from '@/lib/audio';
+import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
 
 type Member = { id: string; name: string; channel: string; online: boolean };
@@ -379,9 +380,9 @@ export default function Home() {
               </div>
               <span className="header-count">{roster.length} online</span>
             </header>
-            <div
+            <LegacyScrollArea
               className="chat-screen"
-              ref={log}
+              viewportRef={log}
               role="log"
               aria-label="Conversation"
               aria-live="polite"
@@ -459,7 +460,7 @@ export default function Home() {
                   <ChevronRight size={15} /> Enter the channel
                 </button>
               )}
-            </div>
+            </LegacyScrollArea>
             {recipient && (
               <div className="whisper-strip">
                 <Lock size={13} /> Whispering to {recipient.name}
@@ -528,28 +529,35 @@ export default function Home() {
               <div className="roster-label">
                 <span className="led" /> ONLINE — {roster.length}
               </div>
-              {roster.map((member) => (
-                <button
-                  key={member.id}
-                  className={`member ${recipient?.id === member.id ? 'selected' : ''}`}
-                  onClick={() =>
-                    member.id !== state.me?.id && setRecipient(member)
-                  }
+              {roster.length > 0 && (
+                <LegacyScrollArea
+                  className="roster-list"
+                  aria-label="Online members"
                 >
-                  <span className="member-avatar">
-                    {member.name.slice(0, 2).toUpperCase()}
-                  </span>
-                  <span className="member-name">
-                    {member.name}
-                    <small>
-                      {member.id === state.me?.id
-                        ? 'You · ready to chat'
-                        : 'In the channel'}
-                    </small>
-                  </span>
-                  <Signal className="signal" size={17} />
-                </button>
-              ))}
+                  {roster.map((member) => (
+                    <button
+                      key={member.id}
+                      className={`member ${recipient?.id === member.id ? 'selected' : ''}`}
+                      onClick={() =>
+                        member.id !== state.me?.id && setRecipient(member)
+                      }
+                    >
+                      <span className="member-avatar">
+                        {member.name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span className="member-name">
+                        {member.name}
+                        <small>
+                          {member.id === state.me?.id
+                            ? 'You · ready to chat'
+                            : 'In the channel'}
+                        </small>
+                      </span>
+                      <Signal className="signal" size={17} />
+                    </button>
+                  ))}
+                </LegacyScrollArea>
+              )}
               {roster.length === 0 && (
                 <div className="roster-empty">
                   <Users size={27} strokeWidth={1} />
