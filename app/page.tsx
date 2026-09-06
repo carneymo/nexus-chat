@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   Radio,
+  Menu,
   Headphones,
   MicOff,
   Users,
@@ -108,6 +109,12 @@ async function api<T = { ok: boolean }>(
 
 export default function Home() {
   const [state, setState] = useState<State>(initial);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [viewport, setViewport] = useState({
+    height: 0,
+    top: 0,
+    keyboard: false,
+  });
   const [panel, setPanel] = useState<Panel>(null);
   const [connected, setConnected] = useState(false);
   const [channel, setChannel] = useState('The Lobby');
@@ -121,8 +128,48 @@ export default function Home() {
   const [clock, setClock] = useState('--:--');
   const [date, setDate] = useState('TODAY');
   const log = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const soundRef = useRef(sound);
+  useEffect(() => {
+    const visual = window.visualViewport;
+    let baseline = window.innerHeight;
+    const sync = () => {
+      const height = visual?.height || window.innerHeight;
+      const focused = document.activeElement?.matches('input, textarea');
+      if (!focused) baseline = Math.max(height, window.innerHeight);
+      document.documentElement.style.setProperty(
+        '--visible-height',
+        height + 'px',
+      );
+      setViewport({
+        height,
+        top: visual?.offsetTop || 0,
+        keyboard: Boolean(focused && baseline - height > 120),
+      });
+    };
+    sync();
+    visual?.addEventListener('resize', sync);
+    visual?.addEventListener('scroll', sync);
+    window.addEventListener('resize', sync);
+    document.addEventListener('focusin', sync);
+    document.addEventListener('focusout', sync);
+    return () => {
+      visual?.removeEventListener('resize', sync);
+      visual?.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+      document.removeEventListener('focusin', sync);
+      document.removeEventListener('focusout', sync);
+      document.documentElement.style.removeProperty('--visible-height');
+    };
+  }, []);
+  useEffect(() => {
+    const field = input.current;
+    if (field) {
+      field.style.height = 'auto';
+      field.style.height =
+        Math.min(112, Math.max(44, field.scrollHeight + 2)) + 'px';
+    }
+  }, [draft]);
   useEffect(() => {
     soundRef.current = sound;
   }, [sound]);
@@ -232,6 +279,7 @@ export default function Home() {
     }
   }
   function open(next: Panel) {
+    setMobileMenu(false);
     setError('');
     setPanel(next);
     cue('click', sound);
@@ -315,7 +363,17 @@ export default function Home() {
   ).length;
 
   return (
-    <main className={`station ${scanlines ? 'crt-on' : ''}`}>
+    <main
+      className={`station ${scanlines ? 'crt-on' : ''} ${mobileMenu ? 'mobile-menu-open' : ''} ${viewport.keyboard ? 'keyboard-open' : ''} ${state.me ? 'is-signed-in' : ''}`}
+      style={
+        viewport.height
+          ? ({
+              '--visible-height': viewport.height + 'px',
+              '--visible-top': viewport.top + 'px',
+            } as React.CSSProperties)
+          : undefined
+      }
+    >
       <div className="outer-status">
         <span>
           <i className="led" /> PRIVATE COMMUNICATIONS NETWORK
@@ -325,6 +383,22 @@ export default function Home() {
         </span>
       </div>
       <section className="chassis" aria-label="Nexus chat terminal">
+        <div className="mobile-topbar">
+          <span className="mobile-wordmark">
+            NEXUS{' '}
+            <small>
+              <i className="led" />
+              {state.me ? 'CONNECTED' : 'GATEWAY'}
+            </small>
+          </span>
+          <button
+            aria-label="Open navigation"
+            aria-expanded={mobileMenu}
+            onClick={() => setMobileMenu(!mobileMenu)}
+          >
+            {mobileMenu ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
         <div className="hardware-top">
           <span className="bolt" />
           <div className="wordmark">
@@ -424,6 +498,21 @@ export default function Home() {
               <div className="vent" />
               <span className="bolt" />
             </div>
+            <button
+              className="metal-button mobile-copy"
+              onClick={() =>
+                void act(async () => {
+                  await navigator.clipboard.writeText(window.location.origin);
+                  addEvent(
+                    'Gateway link copied. Share the invite code separately.',
+                  );
+                  setMobileMenu(false);
+                })
+              }
+            >
+              <Copy />
+              <span>Copy link</span>
+            </button>
           </nav>
           <section className="chat-module">
             <header className="panel-header">
@@ -435,6 +524,20 @@ export default function Home() {
                 </span>
               </div>
               <span className="header-count">{roster.length} online</span>
+              <div className="mobile-channel-actions">
+                <button
+                  onClick={() => open('channels')}
+                  aria-label="Choose channel"
+                >
+                  <Radio size={18} />
+                </button>
+                <button
+                  onClick={() => open('friends')}
+                  aria-label="Show friends and members"
+                >
+                  <Users size={18} />
+                </button>
+              </div>
             </header>
             <VoicePanel
               key={`${viewerId}-${channel}`}
@@ -561,7 +664,20 @@ export default function Home() {
             )}
             <form className="composer" onSubmit={send}>
               <span className="prompt">›</span>
-              <input
+              <textarea
+                rows={1}
+                onFocus={() => setMobileMenu(false)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing &&
+                    window.matchMedia('(min-width: 801px)').matches
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
                 ref={input}
                 aria-label="Message"
                 placeholder={
