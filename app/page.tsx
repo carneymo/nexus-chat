@@ -30,6 +30,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { messageLinks } from '@/lib/message-links';
 import { cue } from '@/lib/audio';
 import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
@@ -496,7 +497,23 @@ export default function Home() {
                             setRecipient(member);
                         }}
                       >{`<${message.name}>`}</button>{' '}
-                      <span>{message.text}</span>
+                      <span>
+                        {messageLinks(message.text).map((part, index) =>
+                          part.href ? (
+                            <a
+                              key={index}
+                              className="message-link"
+                              href={part.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {part.text}
+                            </a>
+                          ) : (
+                            part.text
+                          ),
+                        )}
+                      </span>
                     </div>
                   </div>
                 ),

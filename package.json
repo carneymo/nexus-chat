@@ -10,7 +10,7 @@
     "build": "node scripts/build.mjs",
     "start": "node --env-file=.env server/index.ts",
     "dev:server": "node --env-file=.env --watch server/index.ts",
-    "test": "node --test server/app.test.ts",
+    "test": "node --test server/app.test.ts lib/message-links.test.ts",
     "typecheck": "tsc --noEmit",
     "setup": "node scripts/setup.mjs",
     "backup": "node --env-file=.env scripts/backup.mjs",

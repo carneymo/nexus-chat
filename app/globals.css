@@ -1399,3 +1399,17 @@ button:hover {
     transition: none !important;
   }
 }
+
+.message-link {
+  color: #83d9ef;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.message-link:hover {
+  color: #c5effa;
+}
+.message-link:focus-visible {
+  outline: 2px solid #f1d17e;
+  outline-offset: 3px;
+}
