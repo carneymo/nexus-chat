@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=build /app/dist/client ./dist/client
 COPY server ./server
 COPY scripts/backup.mjs ./scripts/backup.mjs
+COPY scripts/grant-admin.ts ./scripts/grant-admin.ts
 COPY package.json ./package.json
 RUN mkdir /data /app/backups && chown node:node /data /app/backups
 USER node

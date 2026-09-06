@@ -188,3 +188,23 @@ Voice controls also include **Deafen / Undeafen**, which silences incoming voice
 
 ## Accounts and profiles
 Use Create account once with the server invite code. Returning users sign in with their existing account handle and password; no invite is needed. The account handle is permanent. Options lets you change your display name and choose a readable name color. Clicking a chat author opens their profile and stable handle. Messages retain their user ID and display the current profile name, including historical messages. Schema version 2 adds nullable display_name and color columns and preserves existing handles, passwords, sessions, and messages. Administration and recovery tools remain deferred.
+
+## Server administration
+
+Grant the owner role to an existing active account from the server console:
+
+```sh
+sudo docker compose exec -T gateway node scripts/grant-admin.ts ACCOUNT_HANDLE
+```
+
+Refresh Nexus, open **Options → Manage server · Admin**. Only administrators can
+list and change admin resources. Public registration and profile updates cannot
+grant roles. Remove an account to revoke its sessions and disconnect voice; its
+handle and message history remain reserved. Restore lets it sign in again, but
+never restores revoked sessions. Remove a channel to hide it and move members
+to The Lobby, disconnecting their voice sessions. Restore brings back the channel
+and its history. Removed channel names cannot be recreated by ordinary members.
+The Lobby and administrator accounts are protected. Each change requires typing
+the exact handle/channel name and writes an `admin_audit` entry. Schema version 3
+adds these fields without deleting existing accounts or messages. Back up the
+SQLite database before deployment. Permanent data erasure is not included.

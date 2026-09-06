@@ -32,6 +32,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AdminPanel } from '@/components/admin-panel';
 import { VoicePanel } from '@/components/voice-panel';
 import type { VoiceMember } from '@/lib/voice-client';
 import { messageLinks } from '@/lib/message-links';
@@ -40,6 +41,7 @@ import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
 
 type Member = {
+  isAdmin?: number;
   handle?: string;
   color?: string;
   id: string;
@@ -76,6 +78,7 @@ type Panel =
   | 'create'
   | 'friends'
   | 'settings'
+  | 'admin'
   | 'profile'
   | null;
 // Accounts without a chosen profile color use the same stable fallback for every viewer.
@@ -911,7 +914,9 @@ export default function Home() {
                     ? 'Your friends'
                     : panel === 'profile'
                       ? 'Member profile'
-                      : 'Terminal options'}
+                      : panel === 'admin'
+                        ? 'Server management'
+                        : 'Terminal options'}
           </DialogTitle>
           <DialogDescription>
             {panel === 'connect'
@@ -1186,6 +1191,12 @@ export default function Home() {
                 </div>
               );
             })()}
+          {panel === 'admin' && !!state.me?.isAdmin && <AdminPanel />}
+          {panel === 'settings' && !!state.me?.isAdmin && (
+            <button className="dialog-action" onClick={() => open('admin')}>
+              Manage server · Admin
+            </button>
+          )}
           {panel === 'settings' && (
             <div className="dialog-form">
               <label className="option-row" htmlFor="sound-toggle">

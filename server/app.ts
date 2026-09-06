@@ -105,6 +105,7 @@ export function createApp(config: Config) {
     const user = db
       .prepare('SELECT * FROM users WHERE id = ?')
       .get(record.user_id) as User;
+    if (!user || user.disabled) return null;
     return { user, hash, expires: record.expires };
   }
   const online = (id: string) =>
@@ -113,7 +114,7 @@ export function createApp(config: Config) {
     );
   function stateFor(id?: string) {
     const channelRows = db
-      .prepare('SELECT name FROM channels ORDER BY rowid')
+      .prepare('SELECT name FROM channels WHERE archived = 0 ORDER BY rowid')
       .all() as { name: string }[];
     const base = {
       serverName: config.serverName,
@@ -123,7 +124,7 @@ export function createApp(config: Config) {
     const members = (
       db
         .prepare(
-          'SELECT id, COALESCE(display_name, name) AS name, name AS handle, color, channel FROM users ORDER BY name COLLATE NOCASE',
+          'SELECT id, COALESCE(display_name, name) AS name, name AS handle, color, channel, is_admin AS isAdmin FROM users WHERE disabled = 0 ORDER BY name COLLATE NOCASE',
         )
         .all() as Pick<User, 'id' | 'name' | 'channel'>[]
     ).map((user) => ({ ...user, online: online(user.id) }));
@@ -205,6 +206,13 @@ export function createApp(config: Config) {
     }
     if (!value || Array.isArray(value) || typeof value !== 'object')
       fail(400, 'Expected an object.');
+    if (
+      !['/api/login', '/api/register'].includes(
+        new URL(request.url || '/', 'http://localhost').pathname,
+      ) &&
+      !sessionFor(request)
+    )
+      fail(401, 'Connect to the gateway first.');
     return value as Record<string, unknown>;
   }
   const cookie = (token: string, maxAge: number) =>
@@ -298,6 +306,12 @@ export function createApp(config: Config) {
             );
           if (pathname === '/api/login' && !user)
             fail(401, 'Account handle or password is incorrect.');
+          if (
+            user &&
+            db.prepare('SELECT disabled FROM users WHERE id = ?').get(user.id)
+              ?.disabled
+          )
+            fail(401, 'Account handle or password is incorrect.');
           if (user) {
             if (!same(hash, user.password_hash))
               fail(401, 'Callsign, password, or invite code is incorrect.');
@@ -354,6 +368,115 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        if (pathname.startsWith('/api/admin/')) {
+          if (!session.user.is_admin)
+            fail(403, 'Administrator access required.');
+          if (pathname === '/api/admin/state' && request.method === 'GET') {
+            json(response, 200, {
+              users: db
+                .prepare(
+                  'SELECT id, name AS handle, COALESCE(display_name,name) AS name, is_admin AS isAdmin, disabled FROM users ORDER BY name COLLATE NOCASE',
+                )
+                .all(),
+              channels: db
+                .prepare(
+                  'SELECT name, archived FROM channels ORDER BY name COLLATE NOCASE',
+                )
+                .all(),
+            });
+            return;
+          }
+          if (pathname !== '/api/admin/action' || request.method !== 'POST')
+            fail(404, 'Unknown admin action.');
+          rate(`admin:${session.user.id}`, 30, 60000);
+          const data = await body(request);
+          if (!sessionFor(request)?.user.is_admin)
+            fail(403, 'Administrator access required.');
+          const action = data.action;
+          if (
+            ![
+              'remove-user',
+              'restore-user',
+              'remove-channel',
+              'restore-channel',
+            ].includes(String(action))
+          )
+            fail(400, 'Choose a supported admin action.');
+          let removedUser: string | undefined;
+          let displaced: string[] = [];
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            if (action === 'remove-user' || action === 'restore-user') {
+              if (typeof data.target !== 'string')
+                fail(400, 'Choose an account.');
+              const target = db
+                .prepare('SELECT id, name, is_admin FROM users WHERE id = ?')
+                .get(data.target);
+              if (!target) fail(404, 'Account not found.');
+              if (target.is_admin)
+                fail(409, 'Administrator accounts cannot be removed here.');
+              if (data.confirm !== target.name)
+                fail(400, 'Type the exact account handle to confirm.');
+              db.prepare(
+                'UPDATE users SET disabled = ?, channel = ? WHERE id = ?',
+              ).run(action === 'remove-user' ? 1 : 0, 'The Lobby', data.target);
+              if (action === 'remove-user') {
+                db.prepare('DELETE FROM sessions WHERE user_id = ?').run(
+                  data.target,
+                );
+                removedUser = data.target;
+              }
+            } else {
+              if (typeof data.target !== 'string')
+                fail(400, 'Choose a channel.');
+              const target = db
+                .prepare('SELECT name, archived FROM channels WHERE name = ?')
+                .get(data.target);
+              if (!target) fail(404, 'Channel not found.');
+              if (target.name === 'The Lobby')
+                fail(409, 'The Lobby is the permanent fallback channel.');
+              if (data.confirm !== target.name)
+                fail(400, 'Type the exact channel name to confirm.');
+              if (action === 'remove-channel') {
+                displaced = db
+                  .prepare('SELECT id FROM users WHERE channel = ?')
+                  .all(String(target.name))
+                  .map((row) => String(row.id));
+                db.prepare(
+                  'UPDATE users SET channel = ? WHERE channel = ?',
+                ).run('The Lobby', String(target.name));
+              }
+              db.prepare('UPDATE channels SET archived = ? WHERE name = ?').run(
+                action === 'remove-channel' ? 1 : 0,
+                String(target.name),
+              );
+            }
+            db.prepare(
+              'INSERT INTO admin_audit(actor,action,target,created_at) VALUES(?,?,?,?)',
+            ).run(
+              session.user.id,
+              String(action),
+              String(data.target),
+              Date.now(),
+            );
+            db.exec('COMMIT');
+          } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+          }
+          if (removedUser) {
+            voice.removeUser(removedUser);
+            for (const client of clients)
+              if (client.session.user.id === removedUser) {
+                event(client, 'state', stateFor());
+                client.response.end();
+              }
+          }
+          for (const id of displaced) voice.removeUser(id);
+          broadcast();
+          json(response, 200, { ok: true });
+          return;
+        }
         if (pathname === '/api/profile' && request.method === 'POST') {
           rate(`profile:${session.user.id}`, 20, 60000);
           const data = await body(request);
@@ -467,8 +590,10 @@ export function createApp(config: Config) {
               'Use 2–32 letters, numbers, spaces, underscores, or hyphens.',
             );
           let target = db
-            .prepare('SELECT name FROM channels WHERE name = ?')
-            .get(name) as { name: string } | undefined;
+            .prepare('SELECT name, archived FROM channels WHERE name = ?')
+            .get(name) as { name: string; archived?: number } | undefined;
+          if (target?.archived)
+            fail(409, 'This channel was removed by an administrator.');
           if (!target) {
             if (
               Number(

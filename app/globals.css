@@ -1868,3 +1868,27 @@ button:hover {
       ) minmax(0, 1fr) repeat(2, var(--rail-button-height)) 20px;
   }
 }
+
+.admin-panel h3 {
+  color: #d7c795;
+  margin: 18px 0 8px;
+}
+.admin-list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #444b34;
+  padding: 10px 0;
+}
+.admin-list small {
+  display: block;
+  color: #a3ae93;
+  font-size: 12px;
+}
+.admin-list button {
+  color: #e1c896;
+  background: #343c29;
+  border: 1px solid #7a7151;
+  padding: 8px 12px;
+}

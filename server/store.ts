@@ -8,6 +8,8 @@ export type User = {
   salt: string;
   password_hash: string;
   channel: string;
+  is_admin?: number;
+  disabled?: number;
 };
 export function createStore(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -44,7 +46,19 @@ export function createStore(path: string) {
   if (!columns.has('display_name'))
     db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
   if (!columns.has('color')) db.exec('ALTER TABLE users ADD COLUMN color TEXT');
-  db.exec('PRAGMA user_version=2');
+  if (!columns.has('is_admin'))
+    db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
+  if (!columns.has('disabled'))
+    db.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+  const channelColumns = db.prepare('PRAGMA table_info(channels)').all();
+  if (!channelColumns.some((column) => column.name === 'archived'))
+    db.exec(
+      'ALTER TABLE channels ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+    );
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS admin_audit (id INTEGER PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, created_at INTEGER NOT NULL)',
+  );
+  db.exec('PRAGMA user_version=3');
   for (const name of ['The Lobby', 'After Hours', 'Looking for Group'])
     db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(name);
   db.exec('PRAGMA optimize');
