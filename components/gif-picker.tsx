@@ -8,7 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { gifReference, giphyRequest, parseGif, type Gif } from '@/lib/giphy';
+import { giphyRequest, parseGif, type Gif } from '@/lib/giphy';
 
 export function GifPicker({
   open,
@@ -191,7 +191,6 @@ export function GifMessage({
               setError('GIF could not load.');
             }}
           />
-          <span>{playing ? 'Pause' : 'Play'} GIF</span>
         </button>
       ) : (
         <button
@@ -203,9 +202,6 @@ export function GifMessage({
         </button>
       )}
       {error && <output>{error}</output>}
-      <a href={gifReference(id)} target="_blank" rel="noopener noreferrer">
-        View on GIPHY
-      </a>
       {!gif && <small>Loads from GIPHY when clicked.</small>}
       {gif && <small>Powered By GIPHY</small>}
     </span>
