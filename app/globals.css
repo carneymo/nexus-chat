@@ -538,9 +538,9 @@ button:hover {
 .message {
   display: flex;
   gap: 13px;
-  font-size: 16px;
-  line-height: 1.8;
-  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 4px;
   align-items: baseline;
   overflow-wrap: anywhere;
 }
@@ -1209,7 +1209,7 @@ button:hover {
   }
   .message {
     gap: 7px;
-    font-size: 15px;
+    font-size: 13px;
   }
   .message time {
     display: none;
@@ -1713,9 +1713,9 @@ button:hover {
     margin: 10px 0 16px;
   }
   .message {
-    font-size: 14px;
+    font-size: 13px;
     gap: 7px;
-    margin: 10px 0;
+    margin: 4px 0;
   }
   .message time {
     font-size: 10px;
