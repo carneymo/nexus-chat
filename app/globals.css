@@ -1582,7 +1582,9 @@ button:hover {
     text-shadow: 2px 2px #000;
   }
   .mobile-wordmark small {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 7px;
     font: 8px monospace;
     letter-spacing: 2px;
     color: #a9bc86;
