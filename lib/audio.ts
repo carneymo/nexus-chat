@@ -9,6 +9,55 @@ export type SoundCue =
   | 'win'
   | 'loss'
   | 'push';
+
+type GameCue = Exclude<SoundCue, 'join' | 'message' | 'click'>;
+type SoundPhrase = {
+  notes: number[];
+  spacing: number;
+  duration: number;
+  type: OscillatorType;
+  shimmer?: boolean;
+};
+
+// Bright card/chip accents, a major-key reward, and an original descending
+// arcade phrase. Keep these separate from the gateway's connection sounds.
+const gamePhrases: Record<GameCue, SoundPhrase> = {
+  deal: {
+    notes: [1046.5, 1568],
+    spacing: 0.045,
+    duration: 0.16,
+    type: 'sine',
+    shimmer: true,
+  },
+  chips: {
+    notes: [1318.5, 1760],
+    spacing: 0.055,
+    duration: 0.13,
+    type: 'sine',
+  },
+  turn: {
+    notes: [784, 1174.7],
+    spacing: 0.09,
+    duration: 0.24,
+    type: 'sine',
+    shimmer: true,
+  },
+  win: {
+    notes: [1046.5, 1318.5, 1568, 2093],
+    spacing: 0.105,
+    duration: 0.48,
+    type: 'sine',
+    shimmer: true,
+  },
+  loss: {
+    notes: [659.3, 622.3, 493.9, 392, 261.6],
+    spacing: 0.12,
+    duration: 0.2,
+    type: 'triangle',
+  },
+  push: { notes: [784, 784], spacing: 0.13, duration: 0.18, type: 'sine' },
+};
+
 export function cue(kind: SoundCue, enabled: boolean) {
   if (!enabled) return;
   const synth = () => {
@@ -16,50 +65,50 @@ export function cue(kind: SoundCue, enabled: boolean) {
       context ??= new AudioContext();
       void context.resume();
       const now = context.currentTime;
-      const game = !['join', 'message', 'click'].includes(kind);
-      const spacing = game ? 0.12 : 0.08;
-      const duration = game ? 0.075 : 0.18;
+      const phrase =
+        kind === 'join' || kind === 'message' || kind === 'click'
+          ? undefined
+          : gamePhrases[kind];
+      const spacing = phrase?.spacing ?? 0.08;
+      const duration = phrase?.duration ?? 0.18;
       const notes =
-        kind === 'join'
+        phrase?.notes ??
+        (kind === 'join'
           ? [220, 330, 440, 660]
           : kind === 'message'
             ? [540, 720]
-            : kind === 'deal'
-              ? [160, 110]
-              : kind === 'chips'
-                ? [1300, 850]
-                : kind === 'turn'
-                  ? [240, 240]
-                  : kind === 'win'
-                    ? [520, 780]
-                    : kind === 'loss'
-                      ? [150, 90]
-                      : kind === 'push'
-                        ? [190]
-                        : [180];
+            : [180]);
       notes.forEach((frequency, index) => {
-        const oscillator = context!.createOscillator();
-        const gain = context!.createGain();
-        oscillator.type = game ? 'sine' : 'triangle';
-        oscillator.frequency.setValueAtTime(frequency, now + index * spacing);
-        if (game)
-          oscillator.frequency.exponentialRampToValueAtTime(
-            frequency * 0.55,
-            now + index * spacing + duration,
+        const start = now + index * spacing;
+        const playTone = (
+          pitch: number,
+          volume: number,
+          decay: number,
+          type: OscillatorType,
+        ) => {
+          const oscillator = context!.createOscillator();
+          const gain = context!.createGain();
+          oscillator.type = type;
+          oscillator.frequency.setValueAtTime(pitch, start);
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(
+            volume,
+            start + (phrase ? 0.004 : 0.01),
           );
-        gain.gain.setValueAtTime(0, now + index * spacing);
-        gain.gain.linearRampToValueAtTime(
-          game ? 0.065 : 0.09,
-          now + index * spacing + (game ? 0.003 : 0.01),
+          gain.gain.exponentialRampToValueAtTime(0.001, start + decay);
+          oscillator.connect(gain);
+          gain.connect(context!.destination);
+          oscillator.start(start);
+          oscillator.stop(start + decay + 0.02);
+        };
+        playTone(
+          frequency,
+          phrase ? 0.065 : 0.09,
+          duration,
+          phrase?.type ?? 'triangle',
         );
-        gain.gain.exponentialRampToValueAtTime(
-          0.001,
-          now + index * spacing + duration,
-        );
-        oscillator.connect(gain);
-        gain.connect(context!.destination);
-        oscillator.start(now + index * spacing);
-        oscillator.stop(now + index * spacing + duration + 0.02);
+        if (phrase?.shimmer)
+          playTone(frequency * 2, 0.014, duration * 0.55, 'sine');
       });
     } catch {
       /* Sound is optional; browsers require a user gesture. */
