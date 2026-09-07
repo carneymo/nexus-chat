@@ -7,6 +7,7 @@ services:
       INVITE_CODE: ${INVITE_CODE:?Set INVITE_CODE in .env}
       SERVER_NAME: ${SERVER_NAME:-Nexus}
       TURN_URLS: ${TURN_URLS:-}
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
       TURN_SECRET: ${TURN_SECRET:-}
       APP_ORIGIN: https://${DOMAIN:?Set DOMAIN in .env}
     volumes:

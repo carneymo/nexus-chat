@@ -212,3 +212,13 @@ SQLite database before deployment. Permanent data erasure is not included.
 ## Social expansion (review branch)
 
 See [the feature matrix, validation ledger, and migration/rollback guide](docs/social-expansion.md). This branch adds channel ownership/access controls, actual friendships and privacy settings, message history/search/read markers, reports, and open activities while retaining HTTP, SQLite, SSE, and WebRTC. Production deployment requires the existing deployment approval; it has not been performed. Back up SQLite before applying schema version 4, and restore that backup with the old image if rolling back: the old app does not enforce the new private-channel rules.
+
+## GIF picker
+
+Set `GIPHY_API_KEY` in the untracked `.env` and restart the gateway (Docker Compose injects it). Use a GIPHY **API** app. The key is intentionally returned only to signed-in clients because GIPHY requires direct browser API requests; it is not a server-only secret. Configure provider restrictions/production access in the GIPHY dashboard. Beta keys currently allow 100 API calls per hour; production approval/pricing is provider-controlled.
+
+The GIF button opens search (12 results per explicit search). Selection stages a still preview; Send posts an optional caption plus a canonical GIPHY ID link through the existing authenticated message endpoint. Normal room/DM authorization, blocking, history, nonce deduplication, and reporting apply. Changing conversation discards the staged GIF. No schema migration or media storage is needed.
+
+Recipients click Load GIF before any provider request, then Play/Pause for animation. Each load resolves the ID against GIPHY; deleted/unavailable media shows an error and a provider link. Search/loaded previews contact GIPHY directly and disclose the requesting IP. No account IDs, session cookies, or message text are sent to GIPHY; only explicit search text or the selected GIF ID. API media URLs and assets are not persisted, proxied, or rewritten. Media is restricted to HTTPS GIPHY media hosts; the CSP permits only the provider API and image hosts in addition to existing sources.
+
+Verified locally: real provider search, selection, channel send, load, play/pause, reload persistence, and 390px inline layout. Automated tests cover reference validation, hostile media URLs, authenticated configuration/origin protection, provider rate-limit errors, plus the existing messaging/permissions suite. Real Android keyboard and two-user GIF whisper UI have not been separately tested. No production deployment performed for this feature.

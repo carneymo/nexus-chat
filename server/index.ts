@@ -16,6 +16,7 @@ const app = createApp({
   secureCookies: production,
   serverName: process.env.SERVER_NAME || 'Nexus',
   log: true,
+  giphyApiKey: process.env.GIPHY_API_KEY,
   turnUrls: process.env.TURN_URLS?.split(',')
     .map((url) => url.trim())
     .filter(Boolean),

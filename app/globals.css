@@ -2039,3 +2039,120 @@ button:hover {
 .channel-options[open] summary {
   margin-bottom: 14px;
 }
+.gif-button,
+.gif-message > button,
+.gif-play {
+  border: 1px solid #827957;
+  background: #24291a;
+  color: #dcc793;
+  padding: 8px;
+  cursor: pointer;
+}
+.gif-button {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+.gif-search {
+  display: flex;
+  gap: 8px;
+}
+.gif-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 10px;
+  background: #0c1209;
+  color: #d6d7ba;
+  border: 1px solid #626849;
+}
+.gif-search .dialog-action {
+  width: auto;
+  margin: 0;
+}
+.gif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.gif-grid button {
+  min-width: 0;
+  padding: 4px;
+  background: #171e11;
+  border: 1px solid #626849;
+  color: #d6d7ba;
+  cursor: pointer;
+}
+.gif-grid img {
+  width: 100%;
+  height: 95px;
+  object-fit: contain;
+}
+.gif-grid span {
+  display: block;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.giphy-credit {
+  color: #d7bd7a;
+  font-size: 12px;
+}
+.gif-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0;
+  white-space: normal;
+}
+.gif-message small {
+  color: #9ba58b;
+  font-size: 10px;
+}
+.gif-message a {
+  text-decoration: underline;
+  font-size: 11px;
+}
+.gif-play img {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+}
+.gif-play span {
+  display: block;
+  font-size: 11px;
+  padding-top: 4px;
+}
+.gif-draft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: #22291b;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.gif-draft img {
+  width: 64px;
+  height: 54px;
+  object-fit: contain;
+}
+.gif-draft button {
+  margin-left: auto;
+  padding: 10px;
+}
+.gif-button:focus-visible,
+.gif-grid button:focus-visible,
+.gif-message button:focus-visible {
+  outline: 2px solid #f1d17e;
+  outline-offset: 2px;
+}
+@media (max-width: 800px) {
+  .gif-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gif-button {
+    padding: 5px;
+    font-size: 11px;
+  }
+}

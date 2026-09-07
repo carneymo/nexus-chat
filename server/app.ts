@@ -24,6 +24,7 @@ export type Config = VoiceConfig & {
   secureCookies: boolean;
   serverName: string;
   log?: boolean;
+  giphyApiKey?: string;
 };
 type Session = { user: User; hash: string; expires: number };
 type Client = { response: ServerResponse; session: Session };
@@ -279,7 +280,7 @@ export function createApp(config: Config) {
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; media-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.giphy.com; connect-src 'self' https://api.giphy.com; media-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     );
     if (config.secureCookies)
       response.setHeader('Strict-Transport-Security', 'max-age=31536000');
@@ -429,6 +430,10 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        if (pathname === '/api/gif-config' && request.method === 'GET') {
+          json(response, 200, { apiKey: config.giphyApiKey || '' });
+          return;
+        }
         if (pathname === '/api/community' && request.method === 'POST') {
           const data = await body(request);
           if (data.action === 'read')

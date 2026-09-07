@@ -1,4 +1,6 @@
 'use client';
+/* GIPHY requires direct media URLs; image optimization/proxying is prohibited. */
+/* eslint-disable @next/next/no-img-element */
 import {
   useCallback,
   useEffect,
@@ -39,6 +41,8 @@ import {
   type CommunityState,
 } from '@/components/community-panel';
 import { AdminPanel } from '@/components/admin-panel';
+import { GifPicker, GifMessage } from '@/components/gif-picker';
+import { gifId, gifReference, type Gif } from '@/lib/giphy';
 import { VoicePanel } from '@/components/voice-panel';
 import type { VoiceMember } from '@/lib/voice-client';
 import { mergeMessages, messageCursor } from '@/lib/message-state';
@@ -159,6 +163,29 @@ export default function Home() {
     state.members.find((member) => member.id === selectedRecipient?.id) ||
     selectedRecipient;
   const [draft, setDraft] = useState('');
+  const [gifOpen, setGifOpen] = useState(false);
+  const [selectedGif, setSelectedGif] = useState<Gif | null>(null);
+  const [gifApiKey, setGifApiKey] = useState('');
+  const gifUserId = state.me?.id;
+  useEffect(() => {
+    let active = true;
+    if (gifUserId)
+      void api<{ apiKey: string }>('gif-config')
+        .then((data) => {
+          if (active) setGifApiKey(data.apiKey);
+        })
+        .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [gifUserId]);
+  const gifContext = [gifUserId, channel, recipient?.id].join(':');
+  const [previousGifContext, setPreviousGifContext] = useState(gifContext);
+  if (previousGifContext !== gifContext) {
+    setPreviousGifContext(gifContext);
+    setSelectedGif(null);
+    setGifOpen(false);
+  }
   const [reportMessage, setReportMessage] = useState<Message | null>(null);
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const pendingSend = useRef<{ key: string; nonce: string } | null>(null);
@@ -485,6 +512,33 @@ export default function Home() {
     event.preventDefault();
     if (!state.me) {
       open('connect');
+      return;
+    }
+    if (selectedGif) {
+      const text = [draft.trim(), gifReference(selectedGif.id)]
+        .filter(Boolean)
+        .join('\n');
+      if (text.length > 2000) {
+        setError('Message and GIF must fit within 2000 characters.');
+        return;
+      }
+      await act(async () => {
+        const key = JSON.stringify([recipient?.id || channel, text, 'text']);
+        if (pendingSend.current?.key !== key)
+          pendingSend.current = { key, nonce: crypto.randomUUID() };
+        await api('messages', {
+          text,
+          recipient: recipient?.id,
+          channel: recipient ? undefined : channel,
+          kind: 'text',
+          nonce: pendingSend.current.nonce,
+        });
+        pendingSend.current = null;
+        setSelectedGif(null);
+        setDraft('');
+        await refresh();
+        input.current?.focus();
+      });
       return;
     }
     const text = draft.trim();
@@ -970,19 +1024,34 @@ export default function Home() {
                           : `<${state.members.find((m) => m.id === message.userId)?.name || message.name}>`}
                       </button>{' '}
                       <span>
-                        {messageLinks(message.text).map((part, index) =>
-                          part.href ? (
-                            <a
-                              key={index}
-                              className="message-link"
-                              href={part.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {part.text}
-                            </a>
+                        {message.text.split('\n').map((line, lineIndex) =>
+                          gifId(line) ? (
+                            <GifMessage
+                              key={lineIndex}
+                              id={gifId(line)!}
+                              apiKey={gifApiKey}
+                            />
                           ) : (
-                            part.text
+                            <span key={lineIndex}>
+                              {messageLinks(line).map((part, index) =>
+                                part.href ? (
+                                  <a
+                                    key={index}
+                                    className="message-link"
+                                    href={part.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {part.text}
+                                  </a>
+                                ) : (
+                                  part.text
+                                ),
+                              )}
+                              {lineIndex < message.text.split('\n').length - 1
+                                ? '\n'
+                                : ''}
+                            </span>
                           ),
                         )}
                       </span>
@@ -1045,6 +1114,30 @@ export default function Home() {
                   ))}
               </div>
             )}
+            {selectedGif && (
+              <div className="gif-draft">
+                <img
+                  src={selectedGif.still}
+                  alt={selectedGif.title}
+                  referrerPolicy="no-referrer"
+                />
+                <span>Ready to send · Powered By GIPHY</span>
+                <button
+                  aria-label="Remove GIF"
+                  onClick={() => setSelectedGif(null)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            )}
+            {gifOpen && (
+              <GifPicker
+                open={gifOpen}
+                onClose={() => setGifOpen(false)}
+                onSelect={setSelectedGif}
+                apiKey={gifApiKey}
+              />
+            )}
             <form className="composer" onSubmit={send}>
               <span className="prompt">›</span>
               <textarea
@@ -1093,9 +1186,19 @@ export default function Home() {
                 onChange={(event) => setDraft(event.target.value)}
                 autoComplete="off"
               />
+              {state.me && (
+                <button
+                  type="button"
+                  className="gif-button"
+                  aria-label="Choose GIF"
+                  onClick={() => setGifOpen(true)}
+                >
+                  GIF
+                </button>
+              )}
               <button
                 className="send-button"
-                disabled={busy || (!!state.me && !draft.trim())}
+                disabled={busy || (!!state.me && !draft.trim() && !selectedGif)}
                 type="submit"
               >
                 Send <ChevronRight size={15} />
