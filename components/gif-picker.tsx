@@ -102,7 +102,7 @@ export function GifPicker({
                     }}
                   >
                     <img
-                      src={gif.still}
+                      src={gif.animated}
                       alt={gif.title}
                       loading="lazy"
                       referrerPolicy="no-referrer"
