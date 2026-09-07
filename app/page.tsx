@@ -208,17 +208,43 @@ export default function Home() {
   const log = useRef<HTMLDivElement>(null);
   const followMessages = useRef(true);
   const scrollContext = useRef('');
+  const scrollRestore = useRef<{ height: number; top: number } | null>(null);
   useEffect(() => {
     const view = log.current;
     if (!view) return;
+    let frame = 0;
+    let height = view.clientHeight;
+    let contentHeight = view.scrollHeight;
+    const settle = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (followMessages.current && !scrollRestore.current)
+          view.scrollTop = view.scrollHeight;
+        height = view.clientHeight;
+        contentHeight = view.scrollHeight;
+      });
+    };
     const track = () => {
+      // A layout change can emit scroll before ResizeObserver runs. It is not
+      // a request to stop following the conversation.
+      if (height !== view.clientHeight || contentHeight !== view.scrollHeight) {
+        settle();
+        return;
+      }
       followMessages.current =
         view.scrollHeight - view.scrollTop - view.clientHeight < 80;
     };
+    const observer = new ResizeObserver(settle);
+    observer.observe(view);
+    if (view.firstElementChild) observer.observe(view.firstElementChild);
     view.addEventListener('scroll', track);
-    return () => view.removeEventListener('scroll', track);
+    settle();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      view.removeEventListener('scroll', track);
+    };
   }, []);
-  const scrollRestore = useRef<{ height: number; top: number } | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const soundRef = useRef(sound);
   useEffect(() => {
@@ -388,6 +414,7 @@ export default function Home() {
   }, [viewerId, refresh, applyState]);
   useEffect(() => {
     if (scrollRestore.current && log.current) {
+      followMessages.current = false;
       log.current.scrollTop =
         scrollRestore.current.top +
         log.current.scrollHeight -
@@ -395,15 +422,16 @@ export default function Home() {
       scrollRestore.current = null;
       return;
     }
-    const context = channel + ':' + (recipient?.id || '');
+    const context = viewerId + ':' + channel + ':' + (recipient?.id || '');
     const changed = scrollContext.current !== context;
     scrollContext.current = context;
-    if (!changed && !followMessages.current) return;
+    if (changed) followMessages.current = true;
+    if (!followMessages.current) return;
     log.current?.scrollTo({
       top: log.current.scrollHeight,
-      behavior: 'smooth',
+      behavior: 'instant',
     });
-  }, [state.messages.length, channel, recipient?.id, events.length]);
+  }, [state.messages.length, viewerId, channel, recipient?.id, events.length]);
   function addEvent(text: string) {
     setEvents((previous) => [
       ...previous.slice(-19),
