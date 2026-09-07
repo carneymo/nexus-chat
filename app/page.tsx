@@ -896,6 +896,7 @@ export default function Home() {
             {state.me && state.blackjack && !recipient && (
               <BlackjackPanel
                 table={state.blackjack}
+                sound={sound}
                 userId={state.me.id}
                 refresh={refresh}
               />

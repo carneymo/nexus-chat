@@ -1,5 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { cue } from '@/lib/audio';
+import { blackjackCue } from '@/lib/blackjack-audio';
 type Hand = {
   cards: number[];
   bet: number;
@@ -67,11 +69,19 @@ export function BlackjackPanel({
   table,
   userId,
   refresh,
+  sound,
 }: {
   table: BlackjackState;
   userId: string;
   refresh: () => Promise<unknown>;
+  sound: boolean;
 }) {
+  const previousTable = useRef<BlackjackState | null>(null);
+  useEffect(() => {
+    const kind = blackjackCue(previousTable.current, table, userId);
+    previousTable.current = table;
+    if (kind) cue(kind, sound && document.visibilityState === 'visible');
+  }, [table, userId, sound]);
   const [bet, setBet] = useState('20'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),

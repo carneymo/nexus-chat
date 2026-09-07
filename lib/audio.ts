@@ -1,5 +1,15 @@
 let context: AudioContext | undefined;
-export function cue(kind: 'join' | 'message' | 'click', enabled: boolean) {
+export type SoundCue =
+  | 'join'
+  | 'message'
+  | 'click'
+  | 'deal'
+  | 'chips'
+  | 'turn'
+  | 'win'
+  | 'loss'
+  | 'push';
+export function cue(kind: SoundCue, enabled: boolean) {
   if (!enabled) return;
   const synth = () => {
     try {
@@ -11,7 +21,19 @@ export function cue(kind: 'join' | 'message' | 'click', enabled: boolean) {
           ? [220, 330, 440, 660]
           : kind === 'message'
             ? [540, 720]
-            : [180];
+            : kind === 'deal'
+              ? [260, 180]
+              : kind === 'chips'
+                ? [900, 1200]
+                : kind === 'turn'
+                  ? [440, 660]
+                  : kind === 'win'
+                    ? [330, 440, 660, 880]
+                    : kind === 'loss'
+                      ? [260, 196, 147]
+                      : kind === 'push'
+                        ? [330, 330]
+                        : [180];
       notes.forEach((frequency, index) => {
         const oscillator = context!.createOscillator();
         const gain = context!.createGain();
