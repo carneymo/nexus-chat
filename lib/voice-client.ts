@@ -59,8 +59,16 @@ export class VoiceConnection {
     playbackBlocked: false,
   };
   private update: (view: VoiceView) => void;
-  constructor(update: (view: VoiceView) => void) {
+  private devices: { microphone: string; speaker: string };
+  constructor(
+    update: (view: VoiceView) => void,
+    devices: { microphone: string; speaker: string } = {
+      microphone: '',
+      speaker: '',
+    },
+  ) {
     this.update = update;
+    this.devices = devices;
   }
   private publish() {
     this.update({ ...this.view, connections: { ...this.view.connections } });
@@ -73,6 +81,9 @@ export class VoiceConnection {
         );
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          ...(this.devices.microphone
+            ? { deviceId: { exact: this.devices.microphone } }
+            : {}),
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
@@ -174,7 +185,17 @@ export class VoiceConnection {
     this.view.connections[id] = 'Connecting';
     pc.ontrack = (event) => {
       audio.srcObject = event.streams[0] || new MediaStream([event.track]);
-      void audio.play().catch(() => {
+      void (async () => {
+        if (this.devices.speaker) {
+          const output = audio as HTMLAudioElement & {
+            setSinkId?: (id: string) => Promise<void>;
+          };
+          if (!output.setSinkId)
+            throw new Error('Speaker selection is unavailable.');
+          await output.setSinkId(this.devices.speaker);
+        }
+        await audio.play();
+      })().catch(() => {
         this.view.playbackBlocked = true;
         this.publish();
       });

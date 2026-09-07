@@ -959,7 +959,7 @@ export default function Home() {
               </div>
             </header>
             <VoicePanel
-              key={`${viewerId}-${channel}`}
+              key={viewerId}
               channel={channel}
               userId={viewerId}
               members={state.voice || []}

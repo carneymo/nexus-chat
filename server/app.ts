@@ -85,11 +85,14 @@ export function createApp(config: Config) {
     json,
     fail,
     changed: broadcast,
-    authorize: (session) => {
+    authorize: (session, voiceChannel) => {
       const fresh = community.account(session.user.id);
-      if (!fresh || fresh.channel !== session.user.channel)
+      if (!fresh || (!voiceChannel && fresh.channel !== session.user.channel))
         fail(409, 'Channel changed. Join voice again.');
-      community.requireAccess(session.user.id, session.user.channel);
+      community.requireAccess(
+        session.user.id,
+        voiceChannel || session.user.channel,
+      );
     },
     sessionValid: (hash) =>
       Boolean(
@@ -1036,8 +1039,6 @@ export function createApp(config: Config) {
               data.createOnly === true,
             ),
           };
-          if (session.user.channel !== target.name)
-            voice.removeUser(session.user.id);
           db.prepare('UPDATE users SET channel = ? WHERE id = ?').run(
             target.name,
             session.user.id,

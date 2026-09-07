@@ -160,11 +160,15 @@ void test(
         (await request('state', alice)).data.voice.some(
           (p) => p.id === b.data.id,
         ),
-        false,
+        true,
       );
       assert.equal(
         (await request('voice/heartbeat', bob, { id: b.data.id })).status,
-        403,
+        200,
+      );
+      assert.equal(
+        (await request('voice/leave', bob, { id: b.data.id })).status,
+        200,
       );
       await request('logout', eve, {});
       assert.equal((await request('state', alice)).data.voice.length, 1);

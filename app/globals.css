@@ -869,6 +869,8 @@ button:hover {
   flex-shrink: 0;
 }
 .member-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 14px;
   flex: 1;
   overflow: hidden;
@@ -2634,7 +2636,7 @@ button:hover {
     gap: 6px;
   }
   .chat-layout.roster-open .workspace {
-    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) 280px;
   }
   .chat-layout .command-rail {
     grid-column: 1 / -1;

@@ -24,7 +24,7 @@ type Dependencies = {
   fail: (status: number, message: string) => never;
   changed: () => void;
   sessionValid: (hash: string) => boolean;
-  authorize: (session: VoiceSession) => void;
+  authorize: (session: VoiceSession, channel?: string) => void;
 };
 export function createVoice(config: VoiceConfig, deps: Dependencies) {
   const people = new Map<string, Participant>();
@@ -78,6 +78,23 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
   }
   const timer = setInterval(() => {
     for (const person of people.values()) {
+      try {
+        deps.authorize(
+          {
+            user: {
+              id: person.userId,
+              name: person.name,
+              channel: person.channel,
+            },
+            hash: person.session,
+            expires: person.expires,
+          },
+          person.channel,
+        );
+      } catch {
+        remove(person.id);
+        continue;
+      }
       if (
         person.expires <= Date.now() ||
         Date.now() - person.seen > 150000 ||
@@ -138,12 +155,9 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
       const id =
         new URL(request.url!, 'http://localhost').searchParams.get('id') || '';
       const person = people.get(id);
-      if (
-        !person ||
-        person.session !== session.hash ||
-        person.channel !== session.user.channel
-      )
+      if (!person || person.session !== session.hash)
         deps.fail(403, 'Join voice first.');
+      deps.authorize(session, person.channel);
       if (person.response) deps.fail(409, 'Voice connection is already open.');
       response.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -153,6 +167,7 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
       });
       response.write(': connected\n\n');
       person.response = response;
+      deps.authorize(session, person.channel);
       person.seen = Date.now();
       response.on('close', () => remove(id));
       changed();
@@ -162,12 +177,9 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
     const data = await deps.body(request);
     deps.authorize(session);
     const person = people.get(typeof data.id === 'string' ? data.id : '');
-    if (
-      !person ||
-      person.session !== session.hash ||
-      person.channel !== session.user.channel
-    )
+    if (!person || person.session !== session.hash)
       deps.fail(403, 'Join voice first.');
+    deps.authorize(session, person.channel);
     person.seen = Date.now();
     if (path === '/api/voice/leave') remove(person.id);
     else if (path === '/api/voice/mute') {
