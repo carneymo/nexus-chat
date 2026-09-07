@@ -1123,6 +1123,15 @@ button:hover {
   flex-direction: column;
   gap: 8px;
 }
+.channel-name-entry {
+  margin-top: 8px;
+  border-top: 1px solid #596245;
+}
+.channel-name-entry summary {
+  padding: 12px 0;
+  cursor: pointer;
+  color: #a4ad92;
+}
 .channel-list > button {
   display: flex;
   align-items: center;

@@ -174,6 +174,7 @@ export default function Home() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const [chatFocus, setChatFocus] = useState(false);
   const [mobileTable, setMobileTable] = useState(false);
+  const channelPickerTitle = useRef<HTMLHeadingElement>(null);
   const [viewport, setViewport] = useState({
     height: 0,
     top: 0,
@@ -1596,8 +1597,11 @@ export default function Home() {
         open={panel !== null}
         onOpenChange={(value) => !value && setPanel(null)}
       >
-        <DialogContent className="nexus-dialog">
-          <DialogTitle>
+        <DialogContent
+          className="nexus-dialog"
+          initialFocus={panel === 'channels' ? channelPickerTitle : undefined}
+        >
+          <DialogTitle ref={channelPickerTitle} tabIndex={-1}>
             {panel === 'search'
               ? 'Search conversation'
               : panel === 'connect'
@@ -1789,21 +1793,6 @@ export default function Home() {
           )}
           {panel === 'channels' && (
             <div className="channel-list">
-              <form
-                className="dialog-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void join(
-                    new FormData(e.currentTarget).get('name') as string,
-                  );
-                }}
-              >
-                <label>
-                  Join by name
-                  <input name="name" minLength={2} maxLength={32} required />
-                </label>
-                <button className="dialog-action">Join channel</button>
-              </form>
               {state.channels.map((name) => (
                 <button
                   key={name}
@@ -1819,6 +1808,24 @@ export default function Home() {
                   <ChevronRight size={15} />
                 </button>
               ))}
+              <details className="channel-name-entry">
+                <summary>Join by name</summary>
+                <form
+                  className="dialog-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void join(
+                      new FormData(e.currentTarget).get('name') as string,
+                    );
+                  }}
+                >
+                  <label>
+                    Channel name
+                    <input name="name" minLength={2} maxLength={32} required />
+                  </label>
+                  <button className="dialog-action">Join channel</button>
+                </form>
+              </details>
             </div>
           )}
           {panel === 'create' && (
