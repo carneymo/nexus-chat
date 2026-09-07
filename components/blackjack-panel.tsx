@@ -2,6 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { cue } from '@/lib/audio';
 import { blackjackCue } from '@/lib/blackjack-audio';
+import type { BlackjackLeader } from '@/lib/blackjack-stats';
+import { BlackjackLeaderboard } from './blackjack-leaderboard';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from './ui/dialog';
 type Hand = {
   cards: number[];
   bet: number;
@@ -10,6 +18,7 @@ type Hand = {
   returned?: number;
 };
 export type BlackjackState = {
+  leaderboard?: BlackjackLeader[];
   revision: number;
   phase: 'betting' | 'playing' | 'settled';
   round: number;
@@ -77,6 +86,7 @@ export function BlackjackPanel({
   sound: boolean;
 }) {
   const previousTable = useRef<BlackjackState | null>(null);
+  const [showStats, setShowStats] = useState(false);
   useEffect(() => {
     const kind = blackjackCue(previousTable.current, table, userId);
     previousTable.current = table;
@@ -122,7 +132,19 @@ export function BlackjackPanel({
       <header>
         <strong>♠ Blackjack</strong>
         <span>{table.balance.toLocaleString()} credits</span>
+        <button className="bj-mobile-stats" onClick={() => setShowStats(true)}>
+          Stats
+        </button>
       </header>
+      <Dialog open={showStats} onOpenChange={setShowStats}>
+        <DialogContent className="bj-stats-dialog">
+          <DialogTitle>Blackjack stats</DialogTitle>
+          <DialogDescription>
+            Credit leaders and player records.
+          </DialogDescription>
+          <BlackjackLeaderboard players={table.leaderboard || []} />
+        </DialogContent>
+      </Dialog>
       <p className="bj-status">
         {table.phase === 'playing'
           ? 'Cards in play'

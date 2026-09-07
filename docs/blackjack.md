@@ -25,6 +25,16 @@ The channel is inserted if absent, but an existing archived channel is not resto
 
 ## Verification
 
+### Leaderboard and player records
+
+The sidebar shows credit rankings and expandable player records; mobile has a Stats button. Credits include reserved bets and earned grants, with shared ranks for ties. Disabled accounts and players without channel access are excluded; only authorized Blackjack members receive the snapshot.
+
+The additive `blackjack_stats` table stores counters by stable account ID, in the same transaction as actions and payouts. Tracking starts with new rounds after this update. Already-running legacy rounds finish without partial stats; old ledger entries cannot reconstruct full hands and are not backfilled. Split hands count separately; outcomes and net winnings update at settlement. Net winnings exclude grants. Duplicate actions cannot inflate counts.
+
+Off-book decisions compare against [4–8 deck S17 basic strategy](https://wizardofodds.com/games/blackjack/strategy/4-decks/) with double after split, dealer peek and no surrender, respecting available credits and the split limit. Timeouts are counted separately and not judged. A split retains earlier deviations on the original hand; the new hand starts fresh. This is a fixed total-dependent baseline, not card-counting or an outcome-based judgment.
+
+Validation covers strategy fallbacks, duplicate actions, restarts, split counts, timeout exclusion, access checks and offline grants. Local UI verified a dealt hand, double and settlement updating the expanded stats.
+
 Automated coverage: six-deck composition, soft totals, 3:2 payout, dealer natural, soft17 stand, double payout, split payout/aces, max hands, insufficient credits and next-day recovery, daily/weekly grants, duplicate nonce, stale revisions, simultaneous HTTP wagers, unauthorized/banned access, hole-card/shoe privacy, pre-deal refund, and persisted timeout settlement after restart. Existing chat/voice tests remain part of the suite.
 
 Local UI: channel discovery, place bet, deal, split, stand, settlement and updated balance verified; desktop and 390px mobile inspected. Physical Android keyboard and six real friends playing together remain device/load checks, not claims made by automated coverage. Co-op adventure is deferred. Production has not been deployed for this feature.

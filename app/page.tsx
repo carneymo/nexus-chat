@@ -48,6 +48,7 @@ import {
   type BlackjackState,
 } from '@/components/blackjack-panel';
 import { VoicePanel } from '@/components/voice-panel';
+import { BlackjackLeaderboard } from '@/components/blackjack-leaderboard';
 import type { VoiceMember } from '@/lib/voice-client';
 import { mergeMessages, messageCursor } from '@/lib/message-state';
 import { messageLinks } from '@/lib/message-links';
@@ -1322,35 +1323,43 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            <div className="channel-details">
-              <span>CHANNEL INFO</span>
-              <h3>{channel}</h3>
-              <p>A place to hang out between games.</p>
-              <div>
-                <span>Access</span>
-                <b>
-                  <Lock size={11} />{' '}
-                  {state.community?.channels.find((c) => c.name === channel)
-                    ?.visibility || 'public'}
-                </b>
+            {state.blackjack ? (
+              <BlackjackLeaderboard
+                players={state.blackjack.leaderboard || []}
+              />
+            ) : (
+              <div className="channel-details">
+                <span>CHANNEL INFO</span>
+                <h3>{channel}</h3>
+                <p>A place to hang out between games.</p>
+                <div>
+                  <span>Access</span>
+                  <b>
+                    <Lock size={11} />{' '}
+                    {state.community?.channels.find((c) => c.name === channel)
+                      ?.visibility || 'public'}
+                  </b>
+                </div>
+                <div>
+                  <span>Gateway</span>
+                  <b>{state.serverName}</b>
+                </div>
+                <button
+                  onClick={() =>
+                    void act(async () => {
+                      await navigator.clipboard.writeText(
+                        window.location.origin,
+                      );
+                      addEvent(
+                        'Gateway link copied. Share the invite code separately.',
+                      );
+                    })
+                  }
+                >
+                  <Copy size={13} /> Copy gateway link
+                </button>
               </div>
-              <div>
-                <span>Gateway</span>
-                <b>{state.serverName}</b>
-              </div>
-              <button
-                onClick={() =>
-                  void act(async () => {
-                    await navigator.clipboard.writeText(window.location.origin);
-                    addEvent(
-                      'Gateway link copied. Share the invite code separately.',
-                    );
-                  })
-                }
-              >
-                <Copy size={13} /> Copy gateway link
-              </button>
-            </div>
+            )}
             <button
               className="whisper-button"
               onClick={() =>

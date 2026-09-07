@@ -1,5 +1,10 @@
 import { randomInt } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import { basicStrategy } from './blackjack-strategy.ts';
+import {
+  emptyBlackjackStats,
+  type BlackjackStats,
+} from '../lib/blackjack-stats.ts';
 export const BLACKJACK_CHANNEL = 'Blackjack';
 export type Hand = {
   cards: number[];
@@ -8,6 +13,7 @@ export type Hand = {
   split: boolean;
   result?: string;
   returned?: number;
+  offBook?: boolean;
 };
 type Player = { id: string; hands: Hand[] };
 type Table = {
@@ -20,6 +26,7 @@ type Table = {
   hand: number;
   deadline: number;
   round: number;
+  statsVersion?: number;
 };
 type Dependencies = {
   fail: (status: number, message: string) => never;
@@ -58,7 +65,24 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
   db.exec(`CREATE TABLE IF NOT EXISTS blackjack_wallets(user_id TEXT PRIMARY KEY REFERENCES users(id),balance INTEGER NOT NULL CHECK(balance>=0),day INTEGER NOT NULL,week INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS blackjack_ledger(id INTEGER PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),amount INTEGER NOT NULL,reason TEXT NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS blackjack_table(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS blackjack_actions(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL);`);
+ CREATE TABLE IF NOT EXISTS blackjack_actions(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS blackjack_stats(user_id TEXT PRIMARY KEY REFERENCES users(id),stats TEXT NOT NULL);`);
+  function stats(id: string): BlackjackStats {
+    const row = db
+      .prepare('SELECT stats FROM blackjack_stats WHERE user_id=?')
+      .get(id);
+    return row
+      ? { ...emptyBlackjackStats(), ...JSON.parse(String(row.stats)) }
+      : emptyBlackjackStats();
+  }
+  function count(id: string, changes: Partial<BlackjackStats>) {
+    const value = stats(id);
+    for (const key of Object.keys(changes) as (keyof BlackjackStats)[])
+      value[key] += changes[key]!;
+    db.prepare(
+      'INSERT INTO blackjack_stats VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET stats=excluded.stats',
+    ).run(id, JSON.stringify(value));
+  }
   db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(
     BLACKJACK_CHANNEL,
   );
@@ -194,6 +218,15 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         h.result = result;
         h.returned = returned;
         if (returned) money(p.id, returned, `Round ${t.round}: ${result}`);
+        if (t.statsVersion === 1)
+          count(p.id, {
+            won: Number(returned > h.bet),
+            lost: Number(returned < h.bet),
+            pushes: Number(returned === h.bet),
+            naturals: Number(natural(h)),
+            offBookHands: Number(!!h.offBook),
+            net: returned - h.bet,
+          });
       }
     t.phase = 'settled';
     t.deadline = 0;
@@ -228,6 +261,8 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
     }
     if (t.shoe.length < 208) t.shoe = shuffle();
     t.round++;
+    t.statsVersion = 1;
+    for (const p of t.players) count(p.id, { hands: 1 });
     t.dealer = [];
     for (let i = 0; i < 2; i++) {
       for (const p of t.players) p.hands[0].cards.push(draw(t));
@@ -245,6 +280,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
     return transaction(() => {
       if (t.phase === 'betting') deal(t);
       else if (t.phase === 'playing') {
+        if (t.statsVersion === 1) count(t.players[t.turn].id, { timeouts: 1 });
         t.players[t.turn].hands[t.hand].done = true;
         advance(t);
       }
@@ -308,6 +344,37 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         const p = t.players[t.turn],
           h = p.hands[t.hand];
         if (h.done) fail(409, 'Hand complete.');
+        const beforeValue = handValue(h.cards);
+        const available =
+          Number(
+            db
+              .prepare('SELECT balance FROM blackjack_wallets WHERE user_id=?')
+              .get(id)!.balance,
+          ) >= h.bet;
+        const recommended = basicStrategy(
+          h.cards,
+          t.dealer[0],
+          h.cards.length === 2 && available,
+          p.hands.length < 4 && available,
+        );
+        // Count only successful deliberate actions; the transaction rolls back
+        // this update together with any rejected double/split or card draw.
+        if (t.statsVersion === 1) {
+          const deviation = data.action !== recommended;
+          if (deviation) h.offBook = true;
+          count(id, {
+            decisions: 1,
+            deviations: Number(deviation),
+            doubles: Number(data.action === 'double'),
+            hard15Doubles: Number(
+              data.action === 'double' &&
+                beforeValue.total === 15 &&
+                !beforeValue.soft,
+            ),
+            splits: Number(data.action === 'split'),
+            hands: Number(data.action === 'split'),
+          });
+        }
         if (data.action === 'hit') h.cards.push(draw(t));
         else if (data.action === 'stand') h.done = true;
         else if (data.action === 'double') {
@@ -358,6 +425,32 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       round: t.round,
       deadline: t.deadline,
       balance,
+      leaderboard: db
+        .prepare(
+          'SELECT w.*, COALESCE(u.display_name,u.name) AS name FROM blackjack_wallets w JOIN users u ON u.id=w.user_id WHERE u.disabled=0',
+        )
+        .all()
+        .filter((w) => deps.canAccess(String(w.user_id), BLACKJACK_CHANNEL))
+        .map((w) => ({
+          id: String(w.user_id),
+          name: String(w.name),
+          credits:
+            Number(w.balance) +
+            Math.max(0, Math.floor(now() / 86400000) - Number(w.day)) * 20 +
+            Math.max(
+              0,
+              Math.floor((Math.floor(now() / 86400000) + 3) / 7) -
+                Number(w.week),
+            ) *
+              1000 +
+            (t.phase === 'settled'
+              ? 0
+              : t.players
+                  .find((p) => p.id === w.user_id)
+                  ?.hands.reduce((sum, h) => sum + h.bet, 0) || 0),
+          stats: stats(String(w.user_id)),
+        }))
+        .sort((a, b) => b.credits - a.credits || a.id.localeCompare(b.id)),
       serverNow: now(),
       dealer: t.phase === 'playing' ? [t.dealer[0], null] : t.dealer,
       players: t.players.map((p, i) => ({

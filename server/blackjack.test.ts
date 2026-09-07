@@ -5,6 +5,104 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createStore } from './store.ts';
 import { createBlackjack, handValue, sixDeckShoe } from './blackjack.ts';
+void test('stats persist exactly once, respect access, and rank total credits fairly', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-stats-'));
+  const db = createStore(join(dir, 'test.sqlite'));
+  let clock = Date.UTC(2026, 8, 6, 12),
+    allowed = true,
+    nonce = 0;
+  const deps = {
+    now: () => clock,
+    canAccess: () => allowed,
+    fail: (_: number, message: string): never => {
+      throw Error(message);
+    },
+  };
+  let game = createBlackjack(db, deps);
+  const act = (action: string) => {
+    const data = {
+      action,
+      bet: 20,
+      revision: game.snapshot('a')!.revision,
+      nonce: `stats-action-${String(++nonce).padStart(16, '0')}`,
+    };
+    game.act('a', data);
+    game.act('a', data);
+  };
+  const arrange = (cards: number[]) => {
+    const t = JSON.parse(
+      String(db.prepare('SELECT state FROM blackjack_table').get()!.state),
+    );
+    t.shoe = [...Array(250).fill(9), ...cards.reverse()];
+    db.prepare('UPDATE blackjack_table SET state=?').run(JSON.stringify(t));
+  };
+  const mine = () => game.snapshot('a')!.leaderboard.find((p) => p.id === 'a')!;
+  try {
+    for (const id of ['a', 'b'])
+      db.prepare(
+        "INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?, 'salt','hash','Blackjack')",
+      ).run(id, id);
+    game.snapshot('b');
+    act('bet');
+    assert.equal(mine().credits, 1020); // stake remains in ranking
+    act('cancel');
+    assert.equal(mine().stats.hands, 0);
+    act('bet');
+    arrange([9, 9, 4, 7, 5]);
+    act('deal'); //hard15 v18, double draws6 ->21
+    act('double');
+    assert.deepEqual(mine().stats, {
+      hands: 1,
+      won: 1,
+      lost: 0,
+      pushes: 0,
+      naturals: 0,
+      decisions: 1,
+      deviations: 1,
+      offBookHands: 1,
+      doubles: 1,
+      hard15Doubles: 1,
+      splits: 0,
+      timeouts: 0,
+      net: 40,
+    });
+    assert.equal(mine().credits, 1060);
+    game = createBlackjack(db, deps);
+    assert.equal(mine().stats.hard15Doubles, 1);
+    assert.equal(game.tick(), false);
+    act('bet');
+    arrange([9, 9, 7, 7]);
+    act('deal'); //18 v18 timeout push
+    clock += 31000;
+    game.tick();
+    game.tick();
+    assert.equal(mine().stats.timeouts, 1);
+    assert.equal(mine().stats.pushes, 1);
+    assert.equal(mine().stats.decisions, 1);
+    act('bet');
+    arrange([7, 9, 20, 7, 9, 9]);
+    act('deal');
+    act('split');
+    act('stand');
+    act('stand');
+    assert.equal(mine().stats.hands, 4);
+    assert.equal(mine().stats.splits, 1);
+    assert.equal(mine().stats.pushes, 3);
+    clock += 86400000; //Monday: same grants for offline b and active a
+    assert.equal(
+      game.snapshot('a')!.leaderboard.find((p) => p.id === 'b')!.credits,
+      2040,
+    );
+    assert.equal(mine().stats.net, 40);
+    db.prepare("UPDATE users SET disabled=1 WHERE id='b'").run();
+    assert.equal(game.snapshot('a')!.leaderboard.length, 1);
+    allowed = false;
+    assert.equal(game.snapshot('a'), undefined);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 void test('six-deck shoe and soft/hard hand totals', () => {
   const shoe = sixDeckShoe();
   assert.equal(shoe.length, 312);
