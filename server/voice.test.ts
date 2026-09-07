@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,7 +21,7 @@ void test(
     const app = createApp({
       databasePath: join(directory, 'chat.sqlite'),
       staticPath: directory,
-      inviteCode: 'long-test-invite-code',
+
       origin: 'https://test.nexus',
       secureCookies: false,
       serverName: 'Test',
@@ -53,7 +54,7 @@ void test(
         await request('register', '', {
           name,
           password: 'test-long-password',
-          invite: 'long-test-invite-code',
+          inviteToken: testInvite(app.db),
         })
       ).cookie;
     }

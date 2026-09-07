@@ -1,3 +1,15 @@
+import { parseImage } from './images.ts';
+import {
+  clientAddress,
+  normalizeIP,
+  requestPath,
+  registrationOpen,
+  setRegistration,
+  revokeAccount,
+  membershipReview,
+  reviewAccount,
+  securityAudit,
+} from './security.ts';
 import { createBlackjack } from './blackjack.ts';
 import { createCommunity } from './community.ts';
 import {
@@ -20,7 +32,8 @@ import { createStore, type User } from './store.ts';
 export type Config = VoiceConfig & {
   databasePath: string;
   staticPath: string;
-  inviteCode: string;
+  registrationAllowed?: boolean;
+  trustedProxyIPs?: string[];
   origin: string;
   secureCookies: boolean;
   serverName: string;
@@ -58,8 +71,9 @@ function containsControlCharacters(text: string) {
 }
 
 export function createApp(config: Config) {
-  if (config.inviteCode.length < 16)
-    throw new Error('INVITE_CODE must be at least 16 characters.');
+  const trustedProxies = new Set(
+    (config.trustedProxyIPs || []).map(normalizeIP),
+  );
   const db = createStore(config.databasePath);
   const clients = new Set<Client>();
   let closing = false;
@@ -140,6 +154,7 @@ export function createApp(config: Config) {
       generation,
       revision,
       serverName: config.serverName,
+      registrationOpen: registrationOpen(db, config.registrationAllowed),
       channels: channelRows.map((row) => row.name),
     };
     if (!id) return { ...base, me: null, members: [], messages: [] };
@@ -191,6 +206,13 @@ export function createApp(config: Config) {
       me,
       members,
       messages: filtered,
+      imageRevision: Number(
+        db
+          .prepare(
+            'SELECT count(*) AS n FROM message_images WHERE data IS NULL',
+          )
+          .get()!.n,
+      ),
       community: community.snapshot(id),
       blackjack: blackjack.snapshot(id),
       voice: voice
@@ -212,6 +234,14 @@ export function createApp(config: Config) {
     revision++;
     const snapshots = new Map<string, ReturnType<typeof stateFor>>();
     for (const client of clients) {
+      if (
+        !db
+          .prepare('SELECT 1 FROM sessions WHERE token_hash=? AND expires>?')
+          .get(client.session.hash, Date.now())
+      ) {
+        client.response.end();
+        continue;
+      }
       const id = client.session.user.id;
       if (!snapshots.has(id)) snapshots.set(id, stateFor(id));
       event(client, 'state', snapshots.get(id));
@@ -247,6 +277,7 @@ export function createApp(config: Config) {
   }
   async function body(
     request: IncomingMessage,
+    maxBytes = 16_384,
   ): Promise<Record<string, unknown>> {
     if (!request.headers['content-type']?.startsWith('application/json'))
       fail(415, 'Use JSON for this request.');
@@ -254,7 +285,7 @@ export function createApp(config: Config) {
     let length = 0;
     for await (const chunk of request) {
       length += chunk.length;
-      if (length > 16_384) fail(413, 'Request is too large.');
+      if (length > maxBytes) fail(413, 'Request is too large.');
       chunks.push(chunk);
     }
     let value: unknown;
@@ -286,11 +317,11 @@ export function createApp(config: Config) {
     response.setHeader('Referrer-Policy', 'same-origin');
     response.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.giphy.com; connect-src 'self' https://api.giphy.com; media-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.giphy.com; connect-src 'self' https://api.giphy.com; media-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     );
     if (config.secureCookies)
       response.setHeader('Strict-Transport-Security', 'max-age=31536000');
-    const pathname = new URL(request.url || '/', 'http://localhost').pathname;
+    let pathname = '[invalid-target]';
     response.on('finish', () => {
       if (config.log)
         console.log(
@@ -305,7 +336,17 @@ export function createApp(config: Config) {
         );
     });
     try {
-      const ip = request.socket.remoteAddress || 'unknown';
+      try {
+        pathname = requestPath(request.url || '/');
+      } catch {
+        fail(400, 'Invalid request target.');
+      }
+      let ip: string;
+      try {
+        ip = clientAddress(request, trustedProxies);
+      } catch {
+        fail(400, 'Invalid proxy client identity.');
+      }
       // The reverse proxy must preserve Origin. Never trust arbitrary forwarded headers.
       if (request.headers.origin && request.headers.origin !== config.origin)
         fail(403, 'This gateway does not accept requests from that origin.');
@@ -320,8 +361,12 @@ export function createApp(config: Config) {
         return;
       }
       if (pathname.startsWith('/api/')) {
-        rate(`api:${ip}`, 600, 60_000);
         const session = sessionFor(request);
+        rate(
+          session ? `api-user:${session.user.id}` : `api-anonymous:${ip}`,
+          600,
+          60_000,
+        );
         if (pathname === '/api/state' && request.method === 'GET') {
           json(response, 200, stateFor(session?.user.id));
           return;
@@ -332,6 +377,28 @@ export function createApp(config: Config) {
         ) {
           rate(`login:${ip}`, 30, 15 * 60_000);
           const data = await body(request);
+          const registering = pathname === '/api/register';
+          const inviteHash =
+            typeof data.inviteToken === 'string' &&
+            /^[a-f0-9]{64}$/.test(data.inviteToken)
+              ? digest(data.inviteToken)
+              : '';
+          const requireInvite = () => {
+            if (!registrationOpen(db, config.registrationAllowed))
+              fail(403, 'Registration is closed. Ask the server owner.');
+            const invite = db
+              .prepare(
+                'SELECT id FROM server_invites WHERE token_hash=? AND used=0 AND expires>?',
+              )
+              .get(inviteHash, Date.now());
+            if (!invite)
+              fail(
+                401,
+                'Invite invalid, expired, or already used. Ask the server owner for a new link.',
+              );
+            return invite;
+          };
+          if (registering) requireInvite();
           const name = typeof data.name === 'string' ? data.name.trim() : '';
           const password =
             typeof data.password === 'string' ? data.password : '';
@@ -344,7 +411,7 @@ export function createApp(config: Config) {
               400,
               'Use a 2–20 character callsign and a password of 10–128 characters.',
             );
-          rate(`name:${name.toLowerCase()}`, 15, 15 * 60_000);
+          rate(`name:${ip}:${name.toLowerCase()}`, 15, 15 * 60_000);
           if (activeHashes >= 4)
             fail(503, 'Gateway is busy. Try connecting again shortly.');
           let user = db
@@ -365,21 +432,24 @@ export function createApp(config: Config) {
             );
           if (pathname === '/api/login' && !user)
             fail(401, 'Account handle or password is incorrect.');
-          if (
-            user &&
-            db.prepare('SELECT disabled FROM users WHERE id = ?').get(user.id)
-              ?.disabled
-          )
-            fail(401, 'Account handle or password is incorrect.');
+          if (user) {
+            const fresh = db
+              .prepare(
+                'SELECT disabled,auth_version,password_hash FROM users WHERE id=?',
+              )
+              .get(user.id);
+            if (
+              !fresh ||
+              fresh.disabled ||
+              fresh.auth_version !== user.auth_version ||
+              fresh.password_hash !== user.password_hash
+            )
+              fail(401, 'Account handle or password is incorrect.');
+          }
           if (user) {
             if (!same(hash, user.password_hash))
               fail(401, 'Callsign, password, or invite code is incorrect.');
           } else {
-            if (
-              typeof data.invite !== 'string' ||
-              !same(data.invite, config.inviteCode)
-            )
-              fail(401, 'Callsign, password, or invite code is incorrect.');
             if (
               Number(
                 db.prepare('SELECT COUNT(*) AS count FROM users').get()!.count,
@@ -393,11 +463,25 @@ export function createApp(config: Config) {
               password_hash: hash,
               channel: 'The Lobby',
             };
+            db.exec('BEGIN IMMEDIATE');
             try {
+              // Recheck after asynchronous hashing; shutdown/revocation/use may have raced it.
+              const linkedInvite = requireInvite();
               db.prepare(
-                'INSERT INTO users(id,name,salt,password_hash) VALUES (?,?,?,?)',
-              ).run(user.id, name, salt, hash);
+                'INSERT INTO users(id,name,salt,password_hash,registered_at,invite_id) VALUES (?,?,?,?,?,?)',
+              ).run(user.id, name, salt, hash, Date.now(), linkedInvite.id);
+              db.prepare('UPDATE server_invites SET used=1 WHERE id=?').run(
+                linkedInvite.id,
+              );
+              securityAudit(
+                db,
+                user.id,
+                'account-registered',
+                String(linkedInvite.id),
+              );
+              db.exec('COMMIT');
             } catch (error) {
+              db.exec('ROLLBACK');
               if (String(error).includes('UNIQUE'))
                 fail(409, 'That callsign was just registered. Try signing in.');
               throw error;
@@ -436,6 +520,56 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        const imageRoute = /^\/api\/images\/([1-9][0-9]*)(\/delete)?$/.exec(
+          pathname,
+        );
+        if (imageRoute) {
+          const id = Number(imageRoute[1]);
+          if (!Number.isSafeInteger(id)) fail(404, 'Image unavailable.');
+          const message = db
+            .prepare('SELECT * FROM messages WHERE id=?')
+            .get(id);
+          if (!message) fail(404, 'Image unavailable.');
+          if (imageRoute[2] && request.method === 'POST') {
+            await body(request);
+            if (message.user_id !== session.user.id)
+              fail(403, 'You can only delete your own images.');
+            db.prepare(
+              'UPDATE message_images SET data=NULL WHERE message_id=?',
+            ).run(id);
+            json(response, 200, { ok: true });
+            broadcast();
+            return;
+          }
+          if (imageRoute[2] || request.method !== 'GET')
+            fail(405, 'Method not allowed.');
+          if (
+            message.recipient
+              ? message.user_id !== session.user.id &&
+                message.recipient !== session.user.id
+              : !community.canAccess(session.user.id, String(message.channel))
+          )
+            fail(404, 'Image unavailable.');
+          if (
+            db
+              .prepare(
+                'SELECT 1 FROM peer_preferences WHERE user_id=? AND peer_id=? AND (blocked=1 OR muted=1)',
+              )
+              .get(session.user.id, String(message.user_id))
+          )
+            fail(404, 'Image unavailable.');
+          const image = db
+            .prepare('SELECT mime,data FROM message_images WHERE message_id=?')
+            .get(id);
+          if (!image?.data) fail(404, 'Image deleted or unavailable.');
+          response.writeHead(200, {
+            'Content-Type': String(image.mime),
+            'Cache-Control': 'private, no-store',
+            'Content-Security-Policy': "default-src 'none'; sandbox",
+          });
+          response.end(image.data as Uint8Array);
+          return;
+        }
         if (pathname === '/api/gif-config' && request.method === 'GET') {
           json(response, 200, { apiKey: config.giphyApiKey || '' });
           return;
@@ -488,8 +622,103 @@ export function createApp(config: Config) {
         if (pathname.startsWith('/api/admin/')) {
           if (!session.user.is_admin)
             fail(403, 'Administrator access required.');
+          if (pathname === '/api/admin/security' && request.method === 'POST') {
+            rate(`security:${session.user.id}`, 20, 60000);
+            const data = await body(request);
+            if (!sessionFor(request)?.user.is_admin)
+              fail(403, 'Administrator access required.');
+            if (data.action === 'registration') {
+              if (
+                typeof data.open !== 'boolean' ||
+                data.confirm !== (data.open ? 'OPEN' : 'CLOSE')
+              )
+                fail(400, 'Confirm OPEN or CLOSE.');
+              if (data.open && config.registrationAllowed === false)
+                fail(409, 'Registration is disabled by server configuration.');
+              setRegistration(db, data.open, session.user.id);
+            } else {
+              const target =
+                typeof data.target === 'string'
+                  ? db
+                      .prepare('SELECT id,name,is_admin FROM users WHERE id=?')
+                      .get(data.target)
+                  : undefined;
+              if (!target || data.confirm !== target.name)
+                fail(400, 'Confirm the exact account handle.');
+              if (data.action === 'review')
+                reviewAccount(db, String(target.id), session.user.id);
+              else if (data.action === 'revoke' || data.action === 'suspend') {
+                if (target.is_admin && data.action === 'suspend')
+                  fail(
+                    409,
+                    'Use the server console to suspend an administrator.',
+                  );
+                revokeAccount(
+                  db,
+                  String(target.id),
+                  session.user.id,
+                  data.action === 'suspend',
+                );
+                voice.removeUser(String(target.id));
+                for (const client of clients)
+                  if (client.session.user.id === target.id)
+                    client.response.end();
+              } else fail(400, 'Unknown security action.');
+            }
+            json(response, 200, { ok: true });
+            broadcast();
+            return;
+          }
+          if (pathname === '/api/admin/invites' && request.method === 'POST') {
+            rate(`invite:${session.user.id}`, 20, 60000);
+            const data = await body(request);
+            if (!sessionFor(request)?.user.is_admin)
+              fail(403, 'Administrator access required.');
+            if (data.revoke !== undefined) {
+              if (typeof data.revoke !== 'string')
+                fail(400, 'Choose an invite.');
+              db.prepare('DELETE FROM server_invites WHERE id=?').run(
+                data.revoke,
+              );
+              json(response, 200, { ok: true });
+            } else {
+              if (!registrationOpen(db, config.registrationAllowed))
+                fail(409, 'Open registration before creating an invite.');
+              db.prepare(
+                'DELETE FROM server_invites WHERE expires<=? OR used=1',
+              ).run(Date.now());
+              if (
+                Number(
+                  db.prepare('SELECT count(*) AS n FROM server_invites').get()!
+                    .n,
+                ) >= 50
+              )
+                fail(409, 'Revoke an unused invite before creating another.');
+              const token = randomBytes(32).toString('hex');
+              const expires = Date.now() + 7 * 86400_000;
+              db.prepare(
+                'INSERT INTO server_invites(id,token_hash,creator,expires) VALUES(?,?,?,?)',
+              ).run(randomUUID(), digest(token), session.user.id, expires);
+              json(response, 201, {
+                url: `${config.origin}/#invite=${token}`,
+                expires,
+              });
+            }
+            return;
+          }
           if (pathname === '/api/admin/state' && request.method === 'GET') {
             json(response, 200, {
+              registrationOpen: registrationOpen(
+                db,
+                config.registrationAllowed,
+              ),
+              registrationAllowed: config.registrationAllowed !== false,
+              membership: membershipReview(db),
+              invites: db
+                .prepare(
+                  'SELECT id,expires FROM server_invites WHERE used=0 AND expires>? ORDER BY expires DESC',
+                )
+                .all(Date.now()),
               reports: db
                 .prepare(
                   'SELECT r.*,m.text AS messageText,u.name AS reportedHandle FROM reports r JOIN messages m ON m.id=r.message_id JOIN users u ON u.id=m.user_id ORDER BY r.id DESC LIMIT 100',
@@ -524,6 +753,7 @@ export function createApp(config: Config) {
               'restore-user',
               'remove-channel',
               'restore-channel',
+              'delete-channel',
             ].includes(String(action))
           )
             fail(400, 'Choose a supported admin action.');
@@ -540,12 +770,18 @@ export function createApp(config: Config) {
               if (!target) fail(404, 'Account not found.');
               if (target.is_admin)
                 fail(409, 'Administrator accounts cannot be removed here.');
-              if (data.confirm !== target.name)
-                fail(400, 'Type the exact account handle to confirm.');
+              if (data.confirm !== target.name && data.confirm !== true)
+                fail(400, 'Confirm this account action.');
               db.prepare(
                 'UPDATE users SET disabled = ?, channel = ? WHERE id = ?',
               ).run(action === 'remove-user' ? 1 : 0, 'The Lobby', data.target);
               if (action === 'remove-user') {
+                db.prepare(
+                  'UPDATE users SET auth_version=auth_version+1 WHERE id=?',
+                ).run(data.target);
+                db.prepare('DELETE FROM server_invites WHERE creator=?').run(
+                  data.target,
+                );
                 db.prepare('DELETE FROM sessions WHERE user_id = ?').run(
                   data.target,
                 );
@@ -560,8 +796,16 @@ export function createApp(config: Config) {
               if (!target) fail(404, 'Channel not found.');
               if (target.name === 'The Lobby')
                 fail(409, 'The Lobby is the permanent fallback channel.');
-              if (data.confirm !== target.name)
-                fail(400, 'Type the exact channel name to confirm.');
+              if (
+                data.confirm !== target.name &&
+                !(action !== 'delete-channel' && data.confirm === true)
+              )
+                fail(
+                  400,
+                  action !== 'delete-channel'
+                    ? 'Confirm this channel action.'
+                    : 'Type the exact channel name to confirm.',
+                );
               if (action === 'remove-channel') {
                 displaced = db
                   .prepare('SELECT id FROM users WHERE channel = ?')
@@ -571,10 +815,56 @@ export function createApp(config: Config) {
                   'UPDATE users SET channel = ? WHERE channel = ?',
                 ).run('The Lobby', String(target.name));
               }
-              db.prepare('UPDATE channels SET archived = ? WHERE name = ?').run(
-                action === 'remove-channel' ? 1 : 0,
-                String(target.name),
-              );
+              if (action === 'delete-channel') {
+                if (!target.archived)
+                  fail(
+                    409,
+                    'Remove the channel before permanently deleting it.',
+                  );
+                const name = String(target.name);
+                db.prepare(
+                  "UPDATE users SET channel='The Lobby' WHERE channel=?",
+                ).run(name);
+                db.prepare(
+                  "UPDATE users SET home_channel='The Lobby' WHERE home_channel=?",
+                ).run(name);
+                db.prepare(
+                  'DELETE FROM activity_invites WHERE session_id IN (SELECT id FROM activity_sessions WHERE channel=?)',
+                ).run(name);
+                db.prepare(
+                  'DELETE FROM activity_members WHERE session_id IN (SELECT id FROM activity_sessions WHERE channel=?)',
+                ).run(name);
+                db.prepare('DELETE FROM activity_sessions WHERE channel=?').run(
+                  name,
+                );
+                db.prepare(
+                  'DELETE FROM reports WHERE message_id IN (SELECT id FROM messages WHERE channel=? AND recipient IS NULL)',
+                ).run(name);
+                db.prepare(
+                  'DELETE FROM messages WHERE channel=? AND recipient IS NULL',
+                ).run(name);
+                // Direct messages belong to their participants, not the deleted channel.
+                db.prepare(
+                  "UPDATE messages SET channel='The Lobby' WHERE channel=?",
+                ).run(name);
+                db.prepare('DELETE FROM channel_members WHERE channel=?').run(
+                  name,
+                );
+                db.prepare('DELETE FROM channel_bans WHERE channel=?').run(
+                  name,
+                );
+                db.prepare('DELETE FROM read_markers WHERE scope=?').run(
+                  'channel:' + name,
+                );
+                db.prepare(
+                  'INSERT OR IGNORE INTO deleted_channels(name) VALUES(?)',
+                ).run(name);
+                db.prepare('DELETE FROM channels WHERE name=?').run(name);
+              } else {
+                db.prepare(
+                  'UPDATE channels SET archived = ? WHERE name = ?',
+                ).run(action === 'remove-channel' ? 1 : 0, String(target.name));
+              }
             }
             db.prepare(
               'INSERT INTO admin_audit(actor,action,target,created_at) VALUES(?,?,?,?)',
@@ -616,6 +906,14 @@ export function createApp(config: Config) {
             '#b4d5ff',
             '#e2bfef',
             '#f1d17e',
+            '#00e5ff',
+            '#ff5277',
+            '#ad7bff',
+            '#39ff14',
+            '#ff9500',
+            '#4d9fff',
+            '#ff4dff',
+            '#ffd600',
           ];
           if (
             name.length < 2 ||
@@ -734,6 +1032,8 @@ export function createApp(config: Config) {
               name,
               data.visibility,
               data.existingOnly === true,
+              data.description,
+              data.createOnly === true,
             ),
           };
           if (session.user.channel !== target.name)
@@ -766,8 +1066,19 @@ export function createApp(config: Config) {
         }
         if (pathname === '/api/messages' && request.method === 'POST') {
           rate(`message:${session.user.id}`, 40, 60_000);
-          const data = await body(request);
-          const text = typeof data.text === 'string' ? data.text.trim() : '';
+          const data = await body(request, 7 * 1024 * 1024);
+          let image: ReturnType<typeof parseImage> | undefined;
+          if (data.image !== undefined) {
+            rate(`image:${session.user.id}`, 10, 60_000);
+            try {
+              image = parseImage(data.image);
+            } catch (error) {
+              fail(400, (error as Error).message);
+            }
+          }
+          const text =
+            (typeof data.text === 'string' ? data.text.trim() : '') ||
+            (image ? '[Image]' : '');
           if (!text || text.length > 2000 || containsControlCharacters(text))
             fail(400, 'Messages must contain 1–2000 printable characters.');
           const recipient =
@@ -809,7 +1120,14 @@ export function createApp(config: Config) {
               )
               .get(session.user.id, nonce);
             if (prior) {
+              const priorImage = db
+                .prepare(
+                  'SELECT hash,name FROM message_images WHERE message_id=?',
+                )
+                .get(prior.id);
               if (
+                priorImage?.hash !== image?.hash ||
+                priorImage?.name !== image?.name ||
                 prior.text !== text ||
                 prior.recipient !== recipient ||
                 prior.kind !== (data.kind === 'action' ? 'action' : 'text')
@@ -829,20 +1147,33 @@ export function createApp(config: Config) {
           )
             fail(400, 'Choose text or action message type.');
           const kind = data.kind === 'action' ? 'action' : 'text';
-          const result = db
-            .prepare(
-              'INSERT INTO messages(user_id,channel,recipient,text,created_at,kind,nonce) VALUES (?,?,?,?,?,?,?)',
-            )
-            .run(
-              session.user.id,
-              String(fresh.channel),
-              recipient as string | null,
-              text,
-              Date.now(),
-              kind,
-              nonce,
-            );
-          json(response, 201, { id: Number(result.lastInsertRowid) });
+          db.exec('BEGIN IMMEDIATE');
+          let messageId: number;
+          try {
+            const result = db
+              .prepare(
+                'INSERT INTO messages(user_id,channel,recipient,text,created_at,kind,nonce) VALUES (?,?,?,?,?,?,?)',
+              )
+              .run(
+                session.user.id,
+                String(fresh.channel),
+                recipient as string | null,
+                text,
+                Date.now(),
+                kind,
+                nonce,
+              );
+            messageId = Number(result.lastInsertRowid);
+            if (image)
+              db.prepare(
+                'INSERT INTO message_images(message_id,name,mime,hash,data) VALUES (?,?,?,?,?)',
+              ).run(messageId, image.name, image.mime, image.hash, image.bytes);
+            db.exec('COMMIT');
+          } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+          }
+          json(response, 201, { id: messageId });
           broadcast();
           if (recipient)
             notice(

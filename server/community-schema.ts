@@ -15,6 +15,18 @@ export function migrateCommunity(db: DatabaseSync) {
   try {
     add('channels', 'owner_id', 'TEXT REFERENCES users(id)');
     add('channels', 'visibility', "TEXT NOT NULL DEFAULT 'public'");
+    if (
+      !db
+        .prepare('PRAGMA table_info(channels)')
+        .all()
+        .some((row) => row.name === 'description')
+    ) {
+      add('channels', 'description', "TEXT NOT NULL DEFAULT ''");
+      db.prepare('UPDATE channels SET description=? WHERE name=?').run(
+        'A place to hang out between games.',
+        'The Lobby',
+      );
+    }
     add('channels', 'notices', 'INTEGER NOT NULL DEFAULT 1');
     add('users', 'home_channel', "TEXT NOT NULL DEFAULT 'The Lobby'");
     add('users', 'presence', "TEXT NOT NULL DEFAULT 'online'");

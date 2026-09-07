@@ -20,6 +20,7 @@ export type CommunityState = {
     visibility: string;
     role: string;
     notices: boolean;
+    description?: string;
   }[];
   relationships: {
     requester: string;
@@ -422,10 +423,20 @@ export function ChannelControls({ state, me, members, mutate }: Props) {
                   action: 'channel-settings',
                   channel: c.name,
                   visibility: f.get('visibility'),
+                  description: f.get('description'),
                   notices: f.has('notices'),
                 }).catch(() => {});
               }}
             >
+              <label>
+                Description
+                <input
+                  name="description"
+                  maxLength={280}
+                  defaultValue={c.description || ''}
+                  placeholder="What is this channel for?"
+                />
+              </label>
               <Select
                 name="visibility"
                 label="Access"

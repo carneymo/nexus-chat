@@ -1,0 +1,19 @@
+[Unit]
+Description=Nexus security and availability alerts (local journal)
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/nexus
+ExecStart=/usr/bin/python3 /home/ubuntu/nexus/scripts/security-watch.py
+User=root
+StateDirectory=nexus-security
+UMask=0077
+TimeoutStartSec=50
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nexus-security

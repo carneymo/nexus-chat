@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -9,7 +10,7 @@ void test('GIF configuration requires authentication and honors origin checks', 
   const app = createApp({
     databasePath: join(dir, 'db.sqlite'),
     staticPath: dir,
-    inviteCode: 'synthetic-invite-code',
+
     origin: 'https://nexus.test',
     secureCookies: false,
     serverName: 'Test',
@@ -29,7 +30,7 @@ void test('GIF configuration requires authentication and honors origin checks', 
       body: JSON.stringify({
         name: 'GifTester',
         password: 'synthetic-password',
-        invite: 'synthetic-invite-code',
+        inviteToken: testInvite(app.db),
       }),
     });
     assert.equal(registration.status, 200);

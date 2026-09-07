@@ -41,6 +41,7 @@ import {
   type CommunityState,
 } from '@/components/community-panel';
 import { AdminPanel } from '@/components/admin-panel';
+import { ChatImage, ImageDraft, imagePayload } from '@/components/chat-image';
 import { GifPicker, GifMessage } from '@/components/gif-picker';
 import { gifId, gifReference, isGifFromToday, type Gif } from '@/lib/giphy';
 import {
@@ -72,6 +73,8 @@ type Member = {
   online: boolean;
 };
 type Message = {
+  imageName?: string | null;
+  imageDeleted?: number;
   kind?: string;
   id: number;
   name: string;
@@ -88,6 +91,8 @@ type ChatEvent = {
   recipient: string | null;
 };
 type State = {
+  registrationOpen?: boolean;
+  imageRevision?: number;
   revision?: number;
   generation?: string;
   community?: CommunityState;
@@ -111,15 +116,26 @@ type Panel =
   | null;
 // Accounts without a chosen profile color use the same stable fallback for every viewer.
 const callsignColors = [
-  '#83d9ef',
-  '#f2a5c5',
-  '#b7b0ff',
-  '#96dfa9',
-  '#ffb58a',
-  '#b4d5ff',
-  '#e2bfef',
+  '#00e5ff',
+  '#ff5277',
+  '#ad7bff',
+  '#39ff14',
+  '#ff9500',
+  '#4d9fff',
+  '#ff4dff',
 ];
-function callsignColor(id: string) {
+function callsignColor(id: string, selected?: string) {
+  const legacy = {
+    '#83d9ef': '#00e5ff',
+    '#f2a5c5': '#ff5277',
+    '#b7b0ff': '#ad7bff',
+    '#96dfa9': '#39ff14',
+    '#ffb58a': '#ff9500',
+    '#b4d5ff': '#4d9fff',
+    '#e2bfef': '#ff4dff',
+    '#f1d17e': '#ffd600',
+  } as Record<string, string>;
+  if (selected) return legacy[selected.toLowerCase()] || selected;
   let hash = 0;
   for (const character of id)
     hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
@@ -152,9 +168,11 @@ async function api<T = { ok: boolean }>(
 
 export default function Home() {
   const [state, setState] = useState<State>(initial);
+  const [inviteToken, setInviteToken] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [profileId, setProfileId] = useState<string | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [chatFocus, setChatFocus] = useState(false);
   const [viewport, setViewport] = useState({
     height: 0,
     top: 0,
@@ -168,6 +186,8 @@ export default function Home() {
     state.members.find((member) => member.id === selectedRecipient?.id) ||
     selectedRecipient;
   const [draft, setDraft] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
   const [gifOpen, setGifOpen] = useState(false);
   const [selectedGif, setSelectedGif] = useState<Gif | null>(null);
   const [gifApiKey, setGifApiKey] = useState('');
@@ -189,6 +209,7 @@ export default function Home() {
   const [previousGifContext, setPreviousGifContext] = useState(gifContext);
   if (previousGifContext !== gifContext) {
     setPreviousGifContext(gifContext);
+    setSelectedImage(null);
     setSelectedGif(null);
     setGifOpen(false);
   }
@@ -331,6 +352,12 @@ export default function Home() {
   }, [applyState]);
   useEffect(() => {
     const hydrate = setTimeout(() => {
+      const invite = /^#invite=([a-f0-9]{64})$/.exec(window.location.hash)?.[1];
+      if (invite) {
+        setInviteToken(invite);
+        setAuthMode('register');
+        setPanel('connect');
+      }
       setSound(localStorage.getItem('nexus-sound') !== 'off');
       setScanlines(localStorage.getItem('nexus-scanlines') !== 'off');
     }, 0);
@@ -496,7 +523,7 @@ export default function Home() {
     setPanel(next);
     cue('click', sound);
   }
-  async function join(name: string, visibility?: string) {
+  async function join(name: string, visibility?: string, description?: string) {
     if (!state.me) {
       open('connect');
       return;
@@ -505,7 +532,9 @@ export default function Home() {
       await api('channel', {
         name,
         visibility,
+        description,
         existingOnly: visibility === undefined,
+        createOnly: visibility !== undefined,
       });
       await refresh();
       setRecipient(null);
@@ -514,14 +543,40 @@ export default function Home() {
       cue('join', sound);
     });
   }
+  function chooseImage(files: FileList | null) {
+    if (!state.me || busy || !files?.length) return;
+    if (files.length !== 1) {
+      setError('Choose one image at a time.');
+      return;
+    }
+    const file = files[0];
+    if (
+      !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(
+        file.type,
+      )
+    ) {
+      setError('Choose a PNG, JPEG, GIF, or WebP image.');
+      return;
+    }
+    if (!file.size || file.size > 5 * 1024 * 1024) {
+      setError('Images must be no larger than 5 MB.');
+      return;
+    }
+    setError('');
+    setSelectedImage(file);
+  }
   async function send(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!state.me) {
       open('connect');
       return;
     }
-    if (selectedGif) {
-      const text = [draft.trim(), gifReference(selectedGif.id)]
+    if (busy) return;
+    if (selectedGif || selectedImage) {
+      const text = [
+        draft.trim(),
+        selectedGif ? gifReference(selectedGif.id) : '',
+      ]
         .filter(Boolean)
         .join('\n');
       if (text.length > 2000) {
@@ -529,7 +584,15 @@ export default function Home() {
         return;
       }
       await act(async () => {
-        const key = JSON.stringify([recipient?.id || channel, text, 'text']);
+        const image = selectedImage
+          ? await imagePayload(selectedImage)
+          : undefined;
+        const key = JSON.stringify([
+          recipient?.id || channel,
+          text,
+          'text',
+          image,
+        ]);
         if (pendingSend.current?.key !== key)
           pendingSend.current = { key, nonce: crypto.randomUUID() };
         await api('messages', {
@@ -537,10 +600,12 @@ export default function Home() {
           recipient: recipient?.id,
           channel: recipient ? undefined : channel,
           kind: 'text',
+          image,
           nonce: pendingSend.current.nonce,
         });
         pendingSend.current = null;
         setSelectedGif(null);
+        setSelectedImage(null);
         setDraft('');
         await refresh();
         input.current?.focus();
@@ -720,7 +785,7 @@ export default function Home() {
 
   return (
     <main
-      className={`station ${scanlines ? 'crt-on' : ''} ${mobileMenu ? 'mobile-menu-open' : ''} ${viewport.keyboard ? 'keyboard-open' : ''} ${state.me ? 'is-signed-in' : ''}`}
+      className={`station chat-layout ${chatFocus ? 'chat-focus' : ''} roster-open ${scanlines ? 'crt-on' : ''} ${mobileMenu ? 'mobile-menu-open' : ''} ${viewport.keyboard ? 'keyboard-open' : ''} ${state.me ? 'is-signed-in' : ''}`}
       style={
         viewport.height
           ? ({
@@ -768,32 +833,6 @@ export default function Home() {
           </div>
           <span className="bolt" />
         </div>
-        <header className="banner-frame">
-          <div className="banner-screen">
-            <div className="banner-kicker">
-              <span className="led" /> GATEWAY /{' '}
-              {state.serverName.toUpperCase()}
-            </div>
-            <div className="banner-title">
-              Welcome to <strong>the other side.</strong>
-              <span className="cursor">_</span>
-            </div>
-            <div className="banner-bottom">
-              <span>A familiar place. A few good friends.</span>
-              <span>
-                CHANNEL OPEN. MAKE YOURSELF AT HOME.
-                <span className="little-cross"> ✦</span>
-              </span>
-            </div>
-          </div>
-          <div className="banner-end">
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-        </header>
         <div className="workspace">
           <nav className="command-rail" aria-label="Main controls">
             <button
@@ -820,6 +859,12 @@ export default function Home() {
             </button>
 
             <div className="rail-spacer" />
+            {!!state.me?.isAdmin && (
+              <button className="metal-button" onClick={() => open('admin')}>
+                <Shield />
+                <span>Manage server</span>
+              </button>
+            )}
             <button className="metal-button" onClick={() => open('settings')}>
               <Settings />
               <span>Options</span>
@@ -863,7 +908,17 @@ export default function Home() {
               <span>Copy link</span>
             </button>
           </nav>
-          <section className="chat-module">
+          <section
+            className="chat-module"
+            onDragOver={(event) => {
+              if (event.dataTransfer.types.includes('Files'))
+                event.preventDefault();
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              chooseImage(event.dataTransfer.files);
+            }}
+          >
             <header className="panel-header">
               <div>
                 <Hash size={16} />
@@ -872,7 +927,20 @@ export default function Home() {
                   {recipient ? 'PRIVATE' : 'CHANNEL'}
                 </span>
               </div>
-              <span className="header-count">{roster.length} online</span>
+              <div className="chat-view-controls">
+                <button
+                  type="button"
+                  aria-pressed={chatFocus}
+                  onClick={() => {
+                    setChatFocus(!chatFocus);
+                    setMobileMenu(false);
+                  }}
+                  title="Hide framing for more conversation space"
+                >
+                  {chatFocus ? 'Exit focus' : 'Chat focus'}
+                </button>
+                <span className="header-count">{roster.length} online</span>
+              </div>
               <div className="mobile-channel-actions">
                 <button
                   onClick={() => open('channels')}
@@ -1018,10 +1086,12 @@ export default function Home() {
                       <button
                         className="callsign"
                         style={{
-                          color:
+                          color: callsignColor(
+                            message.userId,
                             state.members.find(
                               (member) => member.id === message.userId,
-                            )?.color || callsignColor(message.userId),
+                            )?.color,
+                          ),
                         }}
                         onClick={() => {
                           const member = state.members.find(
@@ -1073,6 +1143,21 @@ export default function Home() {
                           ),
                         )}
                       </span>
+                      {message.imageName && (
+                        <ChatImage
+                          key={`${message.id}:${state.imageRevision || 0}`}
+                          id={message.id}
+                          name={message.imageName}
+                          deleted={Boolean(message.imageDeleted)}
+                          own={message.userId === state.me?.id}
+                          onDelete={async () => {
+                            await act(async () => {
+                              await api(`images/${message.id}/delete`, {});
+                              await refresh();
+                            });
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                 ),
@@ -1122,6 +1207,13 @@ export default function Home() {
                   ))}
               </div>
             )}
+            {selectedImage && (
+              <ImageDraft
+                file={selectedImage}
+                disabled={busy}
+                onRemove={() => setSelectedImage(null)}
+              />
+            )}
             {selectedGif && (
               <div className="gif-draft">
                 <img
@@ -1131,6 +1223,7 @@ export default function Home() {
                 />
                 <span>Ready to send · Powered By GIPHY</span>
                 <button
+                  disabled={busy}
                   aria-label="Remove GIF"
                   onClick={() => setSelectedGif(null)}
                 >
@@ -1146,8 +1239,38 @@ export default function Home() {
                 apiKey={gifApiKey}
               />
             )}
-            <form className="composer" onSubmit={send}>
-              <span className="prompt">›</span>
+            <form
+              className="composer"
+              onSubmit={send}
+              onPaste={(event) => {
+                if (event.clipboardData.files.length) {
+                  event.preventDefault();
+                  chooseImage(event.clipboardData.files);
+                }
+              }}
+            >
+              <input
+                ref={imageInput}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                hidden
+                onChange={(event) => {
+                  chooseImage(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+              {state.me && (
+                <button
+                  type="button"
+                  className="gif-button"
+                  aria-label="Upload image"
+                  title="Upload image (up to 5 MB)"
+                  disabled={busy}
+                  onClick={() => imageInput.current?.click()}
+                >
+                  <Plus size={18} />
+                </button>
+              )}
               <textarea
                 rows={1}
                 onFocus={() => setMobileMenu(false)}
@@ -1183,6 +1306,7 @@ export default function Home() {
                   }
                 }}
                 ref={input}
+                disabled={busy}
                 aria-label="Message"
                 placeholder={
                   state.me
@@ -1198,6 +1322,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="gif-button"
+                  disabled={busy}
                   aria-label="Choose GIF"
                   onClick={() => setGifOpen(true)}
                 >
@@ -1205,31 +1330,44 @@ export default function Home() {
                 </button>
               )}
               <button
+                type="button"
+                className="composer-command-help"
+                aria-label="Show chat commands"
+                title="Chat commands"
+                onClick={() =>
+                  addEvent('/join channel · /w callsign message · /help')
+                }
+              >
+                ?
+              </button>
+              <button
                 className="send-button"
-                disabled={busy || (!!state.me && !draft.trim() && !selectedGif)}
+                disabled={
+                  busy ||
+                  (!!state.me &&
+                    !draft.trim() &&
+                    !selectedGif &&
+                    !selectedImage)
+                }
                 type="submit"
               >
                 Send <ChevronRight size={15} />
               </button>
             </form>
-            <div className="composer-help">
-              <span>
-                <kbd>ENTER</kbd> to send <span className="help-divider">/</span>{' '}
-                <button
-                  onClick={() =>
-                    addEvent('/join channel · /w callsign message · /help')
-                  }
-                >
-                  /help
-                </button>{' '}
-                for commands
-              </span>
-              <span>{draft.length} / 2000</span>
-            </div>
+            {draft.length >= 1800 && (
+              <div className="composer-help">
+                <span>{draft.length} / 2000</span>
+              </div>
+            )}
           </section>
-          <aside className="roster-module">
+          <aside
+            id="channel-roster"
+            className="roster-module"
+            aria-label="Channel members"
+          >
             <header className="panel-header">
               <h2>In this channel</h2>
+
               <span className="roster-number">
                 {roster.length.toString().padStart(2, '0')}
               </span>
@@ -1255,7 +1393,7 @@ export default function Home() {
                       <span
                         className="member-name"
                         style={{
-                          color: member.color || callsignColor(member.id),
+                          color: callsignColor(member.id, member.color),
                         }}
                       >
                         {member.name}{' '}
@@ -1331,7 +1469,10 @@ export default function Home() {
               <div className="channel-details">
                 <span>CHANNEL INFO</span>
                 <h3>{channel}</h3>
-                <p>A place to hang out between games.</p>
+                <p>
+                  {state.community?.channels.find((c) => c.name === channel)
+                    ?.description || 'No description yet.'}
+                </p>
                 <div>
                   <span>Access</span>
                   <b>
@@ -1346,17 +1487,20 @@ export default function Home() {
                 </div>
                 <button
                   onClick={() =>
-                    void act(async () => {
-                      await navigator.clipboard.writeText(
-                        window.location.origin,
-                      );
-                      addEvent(
-                        'Gateway link copied. Share the invite code separately.',
-                      );
-                    })
+                    state.me?.isAdmin
+                      ? open('admin')
+                      : void act(async () => {
+                          await navigator.clipboard.writeText(
+                            window.location.origin,
+                          );
+                          addEvent(
+                            'Gateway link copied. Share the invite code separately.',
+                          );
+                        })
                   }
                 >
-                  <Copy size={13} /> Copy gateway link
+                  <Copy size={13} />{' '}
+                  {state.me?.isAdmin ? 'Invite friends' : 'Copy gateway link'}
                 </button>
               </div>
             )}
@@ -1465,8 +1609,20 @@ export default function Home() {
                   await api(authMode, {
                     ...Object.fromEntries(fields),
                     mode: authMode,
+                    inviteToken:
+                      authMode === 'register'
+                        ? inviteToken || undefined
+                        : undefined,
                   });
                   await refresh();
+                  if (inviteToken) {
+                    setInviteToken('');
+                    window.history.replaceState(
+                      null,
+                      '',
+                      window.location.pathname + window.location.search,
+                    );
+                  }
                   setPanel(null);
                   cue('join', sound);
                 });
@@ -1522,25 +1678,36 @@ export default function Home() {
                   placeholder="At least 10 characters"
                 />
               </label>
-              {authMode === 'register' && (
-                <label>
-                  Server invite code
-                  <input
-                    name="invite"
-                    required
-                    type="password"
-                    maxLength={128}
-                    placeholder="Required only to create your account"
-                    autoComplete="off"
-                  />
-                </label>
+              {authMode === 'register' && inviteToken && (
+                <p className="field-help">
+                  You’re invited. Create your account to join—no code needed.
+                </p>
+              )}
+              {authMode === 'register' && !inviteToken && (
+                <p className="field-help">
+                  Open a single-use invitation link from the server owner to
+                  create an account.
+                </p>
+              )}
+              {authMode === 'register' && !state.registrationOpen && (
+                <p className="field-help">
+                  Registration is currently closed. Existing members can still
+                  sign in.
+                </p>
               )}
               <p className="field-help">
                 {authMode === 'register'
                   ? 'Your account handle stays permanent. You can change your display name later.'
-                  : 'No invite code needed. Your session stays signed in for 30 days.'}
+                  : 'Use your existing account. Your session stays signed in for 30 days.'}
               </p>
-              <button className="dialog-action" disabled={busy}>
+              <button
+                className="dialog-action"
+                disabled={
+                  busy ||
+                  (authMode === 'register' &&
+                    (!inviteToken || !state.registrationOpen))
+                }
+              >
                 {busy
                   ? 'Connecting…'
                   : authMode === 'register'
@@ -1630,6 +1797,7 @@ export default function Home() {
                 void join(
                   fields.get('name') as string,
                   fields.get('visibility') as string,
+                  fields.get('description') as string,
                 );
               }}
             >
@@ -1641,6 +1809,14 @@ export default function Home() {
                   minLength={2}
                   maxLength={32}
                   placeholder="The War Room"
+                />
+              </label>
+              <label>
+                Description
+                <input
+                  name="description"
+                  maxLength={280}
+                  placeholder="What is this channel for?"
                 />
               </label>
               <label>
@@ -1678,9 +1854,7 @@ export default function Home() {
               if (!person) return null;
               return (
                 <div className="profile-card">
-                  <h3
-                    style={{ color: person.color || callsignColor(person.id) }}
-                  >
+                  <h3 style={{ color: callsignColor(person.id, person.color) }}>
                     {person.name}
                   </h3>
                   <p>
@@ -1724,15 +1898,14 @@ export default function Home() {
                       </label>
                       <fieldset className="profile-colors">
                         <legend>Name color</legend>
-                        {[...callsignColors, '#f1d17e'].map((color, index) => (
+                        {[...callsignColors, '#ffd600'].map((color, index) => (
                           <label key={color} style={{ color }}>
                             <input
                               type="radio"
                               name="color"
                               value={color}
                               defaultChecked={
-                                color ===
-                                (person.color || callsignColor(person.id))
+                                color === callsignColor(person.id, person.color)
                               }
                               required
                             />
@@ -1743,13 +1916,13 @@ export default function Home() {
                               {
                                 [
                                   'Cyan',
-                                  'Rose',
-                                  'Lavender',
+                                  'Red',
+                                  'Violet',
                                   'Green',
-                                  'Peach',
+                                  'Orange',
                                   'Blue',
-                                  'Lilac',
-                                  'Gold',
+                                  'Magenta',
+                                  'Yellow',
                                 ][index]
                               }
                             </span>
@@ -1778,11 +1951,6 @@ export default function Home() {
               );
             })()}
           {panel === 'admin' && !!state.me?.isAdmin && <AdminPanel />}
-          {panel === 'settings' && !!state.me?.isAdmin && (
-            <button className="dialog-action" onClick={() => open('admin')}>
-              Manage server · Admin
-            </button>
-          )}
           {panel === 'settings' && state.me && state.community && (
             <details className="channel-options">
               <summary>Channel settings · {channel}</summary>

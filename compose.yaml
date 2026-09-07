@@ -4,7 +4,8 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      INVITE_CODE: ${INVITE_CODE:?Set INVITE_CODE in .env}
+      REGISTRATION_ALLOWED: ${REGISTRATION_ALLOWED:-true}
+      TRUSTED_PROXY_IPS: ${NEXUS_PROXY_IP:-172.30.91.2}
       SERVER_NAME: ${SERVER_NAME:-Nexus}
       TURN_URLS: ${TURN_URLS:-}
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}
@@ -13,10 +14,15 @@ services:
     volumes:
       - chat-data:/data
       - chat-backups:/app/backups
-    networks: [gateway]
+    networks:
+      gateway:
+        ipv4_address: ${NEXUS_GATEWAY_IP:-172.30.91.3}
     mem_limit: 256m
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -27,12 +33,17 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks: [gateway]
+    networks:
+      gateway:
+        ipv4_address: ${NEXUS_PROXY_IP:-172.30.91.2}
     depends_on:
       gateway:
         condition: service_healthy
 networks:
   gateway:
+    ipam:
+      config:
+        - subnet: ${NEXUS_NETWORK_SUBNET:-172.30.91.0/29}
 volumes:
   chat-data:
   chat-backups:

@@ -2364,3 +2364,377 @@ button:hover {
 .bj-actions {
   padding-top: 8px;
 }
+
+/* Image attachments share the existing compact chat surface. */
+.chat-image {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+}
+.chat-image img {
+  display: block;
+  max-width: min(100%, 360px);
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.chat-image button {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  text-decoration: underline;
+}
+.image-unavailable {
+  display: block;
+  opacity: 0.65;
+  font-style: italic;
+}
+.image-draft span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.composer:has(input[type='file']):focus-within {
+  outline-offset: 2px;
+}
+
+.composer textarea {
+  padding-left: 12px;
+}
+
+.chat-image img,
+.image-draft img {
+  border: 1px solid #78875f;
+  background: #10160d;
+}
+.composer button[aria-label='Upload image'] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+/* Compact terminal: framing stays tactile while conversation takes the space. */
+.chat-layout .banner-frame {
+  display: none;
+}
+.chat-layout .roster-module[hidden] {
+  display: none;
+}
+.chat-layout .chat-view-controls {
+  flex-shrink: 0;
+  gap: 6px;
+}
+.chat-view-controls button,
+.roster-close,
+.composer-command-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 9px;
+  border: 1px outset #716c50;
+  background: linear-gradient(#3d4232, #23291c);
+  color: #d7cb9b;
+  font: inherit;
+}
+.chat-view-controls button[aria-pressed='true'],
+.chat-view-controls button[aria-expanded='true'] {
+  color: #b5f777;
+  border-color: #7f9b50;
+  background: #26351b;
+}
+.chat-layout .chat-module > .panel-header {
+  gap: 8px;
+  padding: 4px 10px;
+  height: auto;
+  min-height: 42px;
+}
+.chat-layout .chat-module > .panel-header > div:first-child {
+  flex: 1;
+}
+.chat-layout .channel-tag {
+  display: none;
+}
+.chat-layout .chat-image img {
+  max-height: 200px;
+  max-width: min(100%, 300px);
+}
+.chat-layout .image-draft img {
+  max-height: 64px;
+}
+.chat-layout .composer {
+  margin-top: 2px;
+  padding: 5px;
+  gap: 6px;
+}
+.chat-layout .composer-command-help {
+  min-width: 32px;
+  height: 40px;
+  padding: 0;
+}
+.chat-layout .composer-help {
+  justify-content: flex-end;
+  padding: 2px 6px;
+}
+.chat-layout .roster-close {
+  margin-left: auto;
+}
+@media (min-width: 801px) {
+  .station.chat-layout {
+    min-height: 480px;
+    padding: 10px 14px;
+    gap: 6px;
+  }
+  .chat-layout .outer-status,
+  .chat-layout .under-chassis {
+    display: none;
+  }
+  .station.chat-layout {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .chat-layout .chassis {
+    max-width: none;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 8px;
+    gap: 6px;
+  }
+  .chat-layout .hardware-top {
+    min-height: 0;
+    height: 38px;
+    padding: 0 8px;
+  }
+  .chat-layout .wordmark {
+    font-size: 24px;
+    line-height: 1;
+  }
+  .chat-layout .wordmark span {
+    display: none;
+  }
+  .chat-layout .hardware-label {
+    font-size: 10px;
+    line-height: 1.2;
+  }
+  .chat-layout .workspace {
+    position: relative;
+    padding: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 6px;
+  }
+  .chat-layout.roster-open .workspace {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .chat-layout .command-rail {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+  .chat-layout .command-rail .metal-button {
+    height: 36px;
+    min-height: 36px;
+    flex: 0 0 auto;
+    flex-direction: row;
+    padding: 0 14px;
+    gap: 8px;
+  }
+  .chat-layout .metal-button > span {
+    font-size: 15px;
+  }
+  .chat-layout .command-rail small,
+  .chat-layout .rail-bottom,
+  .chat-layout .rail-separator,
+  .chat-layout .mobile-copy {
+    display: none;
+  }
+  .chat-layout .rail-spacer {
+    display: block;
+    flex: 1;
+  }
+  .chat-layout .chat-module {
+    padding: 3px;
+    grid-column: 1;
+    min-height: 0;
+  }
+  .chat-layout .roster-module:not([hidden]) {
+    display: flex;
+    grid-column: 2;
+    min-height: 0;
+  }
+  .chat-layout .station-footer {
+    min-height: 24px;
+    height: 24px;
+    padding: 0 8px;
+  }
+  .chat-layout .roster-info {
+    display: none;
+  }
+  .chat-layout .channel-details {
+    padding: 10px;
+  }
+  .chat-layout.chat-focus .hardware-top,
+  .chat-layout.chat-focus .station-footer,
+  .chat-layout.chat-focus .command-rail {
+    display: none;
+  }
+  .chat-layout.chat-focus .chassis {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .chat-layout.chat-focus .workspace {
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .chat-layout .chat-view-controls button {
+    min-height: 36px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+  .chat-layout .mobile-channel-actions {
+    display: none;
+  }
+  .chat-layout .chat-module > .panel-header {
+    flex-wrap: wrap;
+  }
+  .chat-layout .roster-module:not([hidden]) {
+    display: none;
+  }
+  .chat-layout.chat-focus .mobile-topbar {
+    display: none;
+  }
+}
+
+.chat-layout .channel-details p {
+  overflow-wrap: anywhere;
+}
+
+.invite-management {
+  border-bottom: 1px solid #64654c;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+.invite-management label {
+  display: block;
+  margin: 12px 0;
+}
+.invite-management input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  margin-top: 6px;
+  background: #0c1209;
+  border: 1px solid #626849;
+  color: #d6d7ba;
+}
+.invite-management output {
+  display: block;
+  margin-top: 8px;
+}
+@media (min-width: 801px) {
+  .chat-layout .command-rail {
+    flex-wrap: wrap;
+  }
+}
+
+.invite-management > .dialog-action,
+.invite-copy {
+  width: 100%;
+}
+.invite-management .field-help {
+  margin-bottom: 12px;
+}
+.invite-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px outset #827957;
+  background: linear-gradient(#454a37, #292f20);
+  color: #e0cf9e;
+  font: inherit;
+  cursor: pointer;
+}
+.invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  margin-top: 8px;
+  background: #10160c;
+  border: 1px solid #505b3a;
+}
+.invite-row > span {
+  flex: 1 1 180px;
+}
+.invite-row .invite-action {
+  flex: 0 0 auto;
+}
+.invite-management details {
+  margin-top: 16px;
+}
+.invite-management summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.invite-management output:empty {
+  display: none;
+}
+
+/* Clear, touch-friendly member actions in server management. */
+.admin-panel .invite-action {
+  min-height: 44px;
+  font-weight: 600;
+  border-radius: 4px;
+}
+.admin-panel .invite-action:hover:not(:disabled) {
+  filter: brightness(1.18);
+}
+.admin-panel .invite-action:focus-visible {
+  outline: 2px solid #e0cf9e;
+  outline-offset: 3px;
+}
+.admin-panel .invite-action:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.admin-panel .member-access-list > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+}
+.member-access-list > div > span {
+  flex: 1 1 150px;
+  overflow-wrap: anywhere;
+}
+.admin-panel .member-access-list button {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.admission-status {
+  padding: 12px;
+  border: 1px solid #626849;
+  background: #10160c;
+}
+.admission-status p {
+  margin: 0 0 12px;
+}
+.admin-panel > details {
+  margin: 16px 0;
+}
+.admin-panel > details > summary {
+  cursor: pointer;
+  padding: 8px 0;
+}

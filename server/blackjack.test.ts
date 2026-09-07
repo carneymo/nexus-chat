@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -258,7 +259,7 @@ void test('HTTP blackjack authorizes channel access and serializes simultaneous 
   const app = createApp({
     databasePath: join(dir, 'test.sqlite'),
     staticPath: dir,
-    inviteCode: 'blackjack-test-invite',
+
     origin: 'https://nexus.test',
     secureCookies: false,
     serverName: 'Test',
@@ -281,7 +282,7 @@ void test('HTTP blackjack authorizes channel access and serializes simultaneous 
       const r = await post('register', '', {
         name,
         password: 'test-password-long',
-        invite: 'blackjack-test-invite',
+        inviteToken: testInvite(app.db),
       });
       assert.equal(r.status, 200);
       return r.headers.get('set-cookie')!.split(';')[0];

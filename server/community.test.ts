@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -20,7 +21,7 @@ void test('community permissions, persistence, delivery and session concurrency'
   const config = {
     databasePath: join(dir, 'chat.sqlite'),
     staticPath: dir,
-    inviteCode: 'test-invite-community-only',
+
     origin: 'https://nexus.test',
     secureCookies: false,
     serverName: 'Test',
@@ -56,7 +57,7 @@ void test('community permissions, persistence, delivery and session concurrency'
     const result = await request('register', '', {
       name,
       password: 'test-password-long',
-      invite: config.inviteCode,
+      inviteToken: testInvite(app.db),
     });
     assert.equal(result.status, 200);
     const state = await request('state', result.cookie);

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 
 type Channel = {
+  description: string;
   name: string;
   owner_id: string | null;
   visibility: string;
@@ -160,6 +161,7 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
       .map((c) => ({
         name: c.name,
         visibility: c.visibility,
+        description: c.description,
         role: id ? role(id, c.name) : '',
         notices: Boolean(c.notices),
       }));
@@ -189,7 +191,7 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
     return !['join', 'leave'].includes(kind || '') || Boolean(u.join_notices);
   }
   const messageColumns =
-    "m.id, COALESCE(u.display_name,u.name) AS name,u.name AS handle,u.color,m.user_id AS userId,CASE WHEN m.recipient IS NULL THEN m.channel ELSE '' END AS channel,m.recipient,m.text,m.kind,m.created_at AS createdAt";
+    "m.id, COALESCE(u.display_name,u.name) AS name,u.name AS handle,u.color,m.user_id AS userId,CASE WHEN m.recipient IS NULL THEN m.channel ELSE '' END AS channel,m.recipient,m.text,m.kind,m.created_at AS createdAt,(SELECT name FROM message_images WHERE message_id=m.id) AS imageName,(SELECT data IS NULL FROM message_images WHERE message_id=m.id) AS imageDeleted";
   function history(
     id: string,
     scope: {
@@ -340,10 +342,17 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
     name: string,
     visibility?: unknown,
     existingOnly = false,
+    description: unknown = '',
+    createOnly = false,
   ) {
     if (!/^[A-Za-z0-9 _-]{2,32}$/.test(name))
       fail(400, 'Use 2–32 letters, numbers, spaces, underscores, or hyphens.');
     let c = channel(name);
+    if (c && createOnly)
+      fail(
+        409,
+        'That channel already exists. Edit its description in Channel settings.',
+      );
     if (c?.archived) fail(409, 'This channel was removed by an administrator.');
     if (!c) {
       if (
@@ -363,8 +372,8 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
       ]);
       transaction(() => {
         db.prepare(
-          'INSERT INTO channels(name,owner_id,visibility) VALUES(?,?,?)',
-        ).run(name, id, access);
+          'INSERT INTO channels(name,owner_id,visibility,description) VALUES(?,?,?,?)',
+        ).run(name, id, access, text(description, 280, false));
         db.prepare(
           "INSERT INTO channel_members(channel,user_id,role) VALUES(?,?,'owner')",
         ).run(name, id);
@@ -473,14 +482,17 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
       requireModerator(id, name);
       if (role(id, name) !== 'owner' && !account(id)?.is_admin)
         fail(403, 'Only the owner can change channel access.');
-      if (name.toLowerCase() === 'the lobby')
+      if (name.toLowerCase() === 'the lobby' && data.visibility !== 'public')
         fail(409, 'The Lobby stays public.');
       transaction(() => {
         db.prepare(
-          'UPDATE channels SET visibility=?,notices=? WHERE name=?',
+          'UPDATE channels SET visibility=?,notices=?,description=? WHERE name=?',
         ).run(
           choice(data.visibility, ['public', 'unlisted', 'invite-only']),
           data.notices === true ? 1 : 0,
+          data.description === undefined
+            ? channel(name)!.description
+            : text(data.description, 280, false),
           name,
         );
         audit(id, action, name);

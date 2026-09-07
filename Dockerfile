@@ -9,12 +9,13 @@ RUN pnpm build
 FROM node:24-bookworm-slim
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 DATA_DIR=/data STATIC_DIR=/app/dist/client
 WORKDIR /app
-COPY --from=build /app/dist/client ./dist/client
-COPY server ./server
-COPY lib/blackjack-stats.ts ./lib/blackjack-stats.ts
-COPY scripts/backup.mjs ./scripts/backup.mjs
-COPY scripts/grant-admin.ts ./scripts/grant-admin.ts
-COPY package.json ./package.json
+COPY --chown=node:node --from=build /app/dist/client ./dist/client
+COPY --chown=node:node server ./server
+COPY --chown=node:node lib/blackjack-stats.ts ./lib/blackjack-stats.ts
+COPY --chown=node:node scripts/backup.mjs ./scripts/backup.mjs
+COPY --chown=node:node scripts/grant-admin.ts ./scripts/grant-admin.ts
+COPY --chown=node:node scripts/security-admin.ts ./scripts/security-admin.ts
+COPY --chown=node:node package.json ./package.json
 RUN mkdir /data /app/backups && chown node:node /data /app/backups
 USER node
 EXPOSE 3001

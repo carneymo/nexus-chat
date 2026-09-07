@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -19,7 +20,7 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
   const config: Config = {
     databasePath: join(directory, 'chat.sqlite'),
     staticPath,
-    inviteCode: 'test-invite-code-123456789',
+
     origin: 'https://nexus.test',
     secureCookies: false,
     serverName: 'Test Gateway',
@@ -53,7 +54,7 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
     let result = await request('register', '', {
       name,
       password: 'long-test-password',
-      invite: config.inviteCode,
+      inviteToken: testInvite(app.db),
     });
     if (result.response.status === 409)
       result = await request('login', '', {
@@ -252,8 +253,11 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
         400,
       );
       assert.equal(
-        (await request('messages', alice, { text: 'x'.repeat(17000) })).response
-          .status,
+        (
+          await request('messages', alice, {
+            text: 'x'.repeat(7 * 1024 * 1024 + 1),
+          })
+        ).response.status,
         413,
       );
       assert.equal((await fetch(base)).status, 200);

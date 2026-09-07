@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff } from 'lucide-react';
+import '@/lib/desktop';
 import {
   VoiceConnection,
   type VoiceMember,
@@ -27,6 +28,23 @@ export function VoicePanel({
     playbackBlocked: false,
   });
   const [joining, setJoining] = useState(false);
+  const currentView = useRef(view);
+  useEffect(() => {
+    currentView.current = view;
+    window.nexusDesktop?.setVoiceState(view);
+  }, [view]);
+  useEffect(() => {
+    const unsubscribe = window.nexusDesktop?.onVoiceCommand((command) => {
+      if (!currentView.current.joined) return;
+      if (command === 'mute') void connection.current?.mute(!currentView.current.muted);
+      if (command === 'deafen') connection.current?.deafen(!currentView.current.deafened);
+      if (command === 'leave') connection.current?.stop();
+    });
+    return () => {
+      unsubscribe?.();
+      window.nexusDesktop?.setVoiceState({ joined: false, muted: false, deafened: false });
+    };
+  }, []);
   useEffect(() => {
     const leave = () => connection.current?.stop();
     window.addEventListener('pagehide', leave);

@@ -11,11 +11,13 @@ export type User = {
   channel: string;
   is_admin?: number;
   disabled?: number;
+  auth_version?: number;
 };
 export function createStore(path: string) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS deleted_channels (name TEXT PRIMARY KEY COLLATE NOCASE);
     PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS channels (name TEXT PRIMARY KEY COLLATE NOCASE);
     CREATE TABLE IF NOT EXISTS users (
@@ -51,6 +53,17 @@ export function createStore(path: string) {
     db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
   if (!columns.has('disabled'))
     db.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+  for (const [name, definition] of Object.entries({
+    auth_version: 'INTEGER NOT NULL DEFAULT 0',
+    registered_at: 'INTEGER',
+    invite_id: 'TEXT',
+    reviewed_at: 'INTEGER',
+    reviewed_by: 'TEXT',
+  }))
+    if (!columns.has(name))
+      db.exec(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+  db.exec(`CREATE TABLE IF NOT EXISTS security_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    INSERT OR IGNORE INTO security_settings(key,value) VALUES('registration_open','0');`);
   const channelColumns = db.prepare('PRAGMA table_info(channels)').all();
   if (!channelColumns.some((column) => column.name === 'archived'))
     db.exec(
@@ -61,8 +74,17 @@ export function createStore(path: string) {
   );
   db.exec('PRAGMA user_version=3');
   for (const name of ['The Lobby', 'After Hours', 'Looking for Group'])
-    db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(name);
+    if (!db.prepare('SELECT 1 FROM deleted_channels WHERE name=?').get(name))
+      db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(name);
+  db.exec(`CREATE TABLE IF NOT EXISTS server_invites (
+    id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, creator TEXT NOT NULL REFERENCES users(id),
+    expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
+  );`);
   migrateCommunity(db);
+  db.exec(`CREATE TABLE IF NOT EXISTS message_images (
+    message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, mime TEXT NOT NULL, hash TEXT NOT NULL, data BLOB
+  );`);
   db.exec('PRAGMA optimize');
   return db;
 }

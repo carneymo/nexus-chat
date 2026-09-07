@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -11,7 +12,7 @@ void test('admin authorization, removal, restoration and protected resources', a
   const app = createApp({
     databasePath,
     staticPath: dir,
-    inviteCode: 'test-invite-code-long',
+
     origin: 'https://test.nexus',
     secureCookies: false,
     serverName: 'Test',
@@ -41,14 +42,14 @@ void test('admin authorization, removal, restoration and protected resources', a
       await call('register', '', {
         name: 'Owner',
         password: 'long-test-password',
-        invite: 'test-invite-code-long',
+        inviteToken: testInvite(app.db),
       })
     ).cookie;
     const member = (
       await call('register', '', {
         name: 'Tester',
         password: 'long-test-password',
-        invite: 'test-invite-code-long',
+        inviteToken: testInvite(app.db),
       })
     ).cookie;
     const ownerId = (await call('state', owner)).data.me.id;
@@ -194,7 +195,7 @@ void test('admin authorization, removal, restoration and protected resources', a
       confirm: 'After Hours',
     });
     assert.equal(
-      Number(app.db.prepare('SELECT COUNT(*) AS n FROM admin_audit').get()!.n),
+      Number(app.db.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action!='account-registered'").get()!.n),
       5,
     );
   } finally {

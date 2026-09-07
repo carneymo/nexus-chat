@@ -1,6 +1,8 @@
 {$DOMAIN} {
   encode gzip
   reverse_proxy gateway:3001 {
+    # Overwrite any client-supplied value. The gateway trusts only this proxy's IP.
+    header_up X-Nexus-Client-IP {remote_host}
     flush_interval -1
   }
 }

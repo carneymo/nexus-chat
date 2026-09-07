@@ -1,3 +1,4 @@
+import { testInvite } from './test-fixtures.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -10,7 +11,7 @@ void test('profile updates preserve account identity and message history', async
   const app = createApp({
     databasePath: join(directory, 'chat.sqlite'),
     staticPath: directory,
-    inviteCode: 'test-invite-long-code',
+
     origin: 'https://test.nexus',
     secureCookies: false,
     serverName: 'Test',
@@ -40,7 +41,7 @@ void test('profile updates preserve account identity and message history', async
     const credentials = {
       name: 'Alice',
       password: 'very-long-password',
-      invite: 'test-invite-long-code',
+      inviteToken: testInvite(app.db),
     };
     assert.equal((await call('login', credentials)).status, 401);
     assert.equal((await call('register', credentials)).status, 200);
@@ -71,7 +72,8 @@ void test('profile updates preserve account identity and message history', async
         .status,
       400,
     );
-    assert.equal((await call('register', credentials)).status, 409);
+    assert.equal((await call('register', credentials)).status, 401);
+    assert.equal((await call('register', { ...credentials, inviteToken: testInvite(app.db) })).status, 409);
     await call('logout', {});
     assert.equal(
       (await call('profile', { displayName: 'Nobody', color: '#83d9ef' }))

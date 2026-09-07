@@ -11,7 +11,10 @@ if (!Number.isInteger(port) || port < 1 || port > 65535)
 const app = createApp({
   databasePath: resolve(process.env.DATA_DIR || './data', 'nexus.sqlite'),
   staticPath: resolve(process.env.STATIC_DIR || './dist/client'),
-  inviteCode: process.env.INVITE_CODE || '',
+  registrationAllowed: process.env.REGISTRATION_ALLOWED !== 'false',
+  trustedProxyIPs: process.env.TRUSTED_PROXY_IPS?.split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
   origin,
   secureCookies: production,
   serverName: process.env.SERVER_NAME || 'Nexus',
@@ -23,7 +26,14 @@ const app = createApp({
   turnSecret: process.env.TURN_SECRET,
 });
 app.server.listen(port, process.env.HOST || '127.0.0.1', () =>
-  console.log(`Nexus gateway listening on port ${port}`),
+  console.log(
+    JSON.stringify({
+      level: 'info',
+      event: 'gateway-start',
+      port,
+      pid: process.pid,
+    }),
+  ),
 );
 let shuttingDown = false;
 async function shutdown() {

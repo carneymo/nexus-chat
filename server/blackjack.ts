@@ -83,9 +83,15 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       'INSERT INTO blackjack_stats VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET stats=excluded.stats',
     ).run(id, JSON.stringify(value));
   }
-  db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(
-    BLACKJACK_CHANNEL,
-  );
+  if (
+    !db
+      .prepare('SELECT 1 FROM deleted_channels WHERE name=?')
+      .get(BLACKJACK_CHANNEL)
+  ) {
+    db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(
+      BLACKJACK_CHANNEL,
+    );
+  }
   const fresh: Table = {
     revision: 0,
     phase: 'betting',
