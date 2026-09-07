@@ -378,9 +378,10 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         t.players = t.players.filter((p) => p.id !== id);
         if (!t.players.length) t.deadline = 0;
       } else if (data.action === 'deal') {
-        if (t.phase !== 'betting' || t.players[0]?.id !== id)
-          fail(403, 'The first bettor can deal early.');
-        deal(t);
+        fail(
+          409,
+          'Cards are dealt automatically when the betting countdown ends.',
+        );
       } else {
         if (t.phase !== 'playing' || t.players[t.turn]?.id !== id)
           fail(409, 'It is not your turn.');

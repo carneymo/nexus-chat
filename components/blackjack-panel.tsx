@@ -56,7 +56,7 @@ function Cards({ cards }: { cards: (number | null)[] }) {
       {cards.map((card, i) => (
         <span
           key={`${i}-${card}`}
-          style={{ animationDelay: `${i * 180}ms` }}
+          style={{ animationDelay: `${i * 450}ms` }}
           className={
             'bj-card ' +
             (card !== null && [1, 2].includes(Math.floor(card / 13))
@@ -237,11 +237,6 @@ export function BlackjackPanel({
             <button disabled={busy} onClick={() => void act('cancel')}>
               Cancel bet
             </button>
-            {table.firstBettor === userId && (
-              <button disabled={busy} onClick={() => void act('deal')}>
-                Deal now
-              </button>
-            )}
           </>
         )}
         {turn && hand && (

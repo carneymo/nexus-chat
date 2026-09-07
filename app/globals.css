@@ -2860,7 +2860,7 @@ button:hover {
   }
 }
 .bj-card {
-  animation: blackjack-card-in 240ms ease-out both;
+  animation: blackjack-card-in 500ms ease-out both;
 }
 @media (prefers-reduced-motion: reduce) {
   .bj-card {

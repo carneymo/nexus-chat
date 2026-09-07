@@ -13,6 +13,7 @@ COPY --chown=node:node --from=build /app/dist/client ./dist/client
 COPY --chown=node:node server ./server
 COPY --chown=node:node lib/blackjack-stats.ts ./lib/blackjack-stats.ts
 COPY --chown=node:node scripts/backup.mjs ./scripts/backup.mjs
+COPY --chown=node:node scripts/announce-release.mjs ./scripts/announce-release.mjs
 COPY --chown=node:node scripts/grant-admin.ts ./scripts/grant-admin.ts
 COPY --chown=node:node scripts/security-admin.ts ./scripts/security-admin.ts
 COPY --chown=node:node package.json ./package.json

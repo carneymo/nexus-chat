@@ -21,6 +21,11 @@ void test('stats persist exactly once, respect access, and rank total credits fa
   };
   let game = createBlackjack(db, deps);
   const act = (action: string) => {
+    if (action === 'deal') {
+      clock = game.snapshot('a')!.deadline;
+      game.tick();
+      return;
+    }
     const data = {
       action,
       bet: 20,
@@ -132,13 +137,19 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
       "INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?, 'salt','hash','Blackjack')",
     ).run(id, id);
   let nonce = 0;
-  const act = (id: string, action: string, bet = 20) =>
+  const act = (id: string, action: string, bet = 20) => {
+    if (action === 'deal') {
+      clock = game.snapshot(id)!.deadline;
+      game.tick();
+      return;
+    }
     game.act(id, {
       action,
       bet,
       revision: game.snapshot(id)!.revision,
       nonce: 'test-nonce-' + String(++nonce).padStart(16, '0'),
     });
+  };
   const arrange = (cards: number[]) => {
     const row = db.prepare('SELECT state FROM blackjack_table').get()!;
     const state = JSON.parse(String(row.state));
@@ -384,13 +395,19 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
       "INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?,'x','x','Blackjack')",
     ).run(id, id);
   let n = 0;
-  const act = (id: string, action: string) =>
+  const act = (id: string, action: string) => {
+    if (action === 'deal') {
+      now = game.snapshot(id)!.deadline;
+      game.tick();
+      return;
+    }
     game.act(id, {
       action,
       bet: 20,
       revision: game.snapshot(id)!.revision,
       nonce: 'limits-' + String(++n).padStart(20, '0'),
     });
+  };
   try {
     game.snapshot('a');
     game.snapshot('b');
@@ -414,7 +431,9 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
     db.prepare('UPDATE blackjack_table SET state=?').run(JSON.stringify(t));
     act('a', 'deal');
     assert.throws(() => act('b', 'hit'), /not your turn/);
-    db.prepare("UPDATE blackjack_wallets SET balance=0 WHERE user_id='a'").run();
+    db.prepare(
+      "UPDATE blackjack_wallets SET balance=0 WHERE user_id='a'",
+    ).run();
     assert.throws(() => act('a', 'double'), /Not enough/);
     assert.throws(() => act('a', 'split'), /Not enough/);
     assert.equal(game.snapshot('a')!.balance, 0);
@@ -444,22 +463,57 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
 void test('all present bettors shorten countdown and retain seats across rounds', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-ready-'));
   const db = createStore(join(dir, 'test.sqlite'));
-  let clock = Date.UTC(2026, 8, 8), nonce = 0;
-  const game = createBlackjack(db, { now: () => clock, online: () => true, canAccess: () => true,
-    fail: (_, message): never => { throw Error(message); } });
+  let clock = Date.UTC(2026, 8, 8),
+    nonce = 0;
+  const game = createBlackjack(db, {
+    now: () => clock,
+    online: () => true,
+    canAccess: () => true,
+    fail: (_, message): never => {
+      throw Error(message);
+    },
+  });
   try {
-    for (const id of ['a', 'b']) db.prepare("INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?,'x','x','Blackjack')").run(id,id);
-    const bet = (id: string) => game.act(id, {action:'bet',bet:20,revision:game.snapshot(id)!.revision,nonce:`ready-action-${String(++nonce).padStart(16,'0')}`});
+    for (const id of ['a', 'b'])
+      db.prepare(
+        "INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?,'x','x','Blackjack')",
+      ).run(id, id);
+    const bet = (id: string) =>
+      game.act(id, {
+        action: 'bet',
+        bet: 20,
+        revision: game.snapshot(id)!.revision,
+        nonce: `ready-action-${String(++nonce).padStart(16, '0')}`,
+      });
     bet('a');
+    assert.throws(
+      () =>
+        game.act('a', {
+          action: 'deal',
+          revision: game.snapshot('a')!.revision,
+          nonce: 'blocked-early-deal-12345',
+        }),
+      /automatically/,
+    );
     assert.equal(game.snapshot('a')!.deadline, clock + 20000);
     bet('b');
     assert.equal(game.snapshot('a')!.deadline, clock + 3000);
     clock += 3000;
     assert.equal(game.tick(), true);
     assert.equal(game.snapshot('a')!.shuffledThisRound, true);
-    while (game.snapshot('a')!.phase === 'playing') { clock += 31000; game.tick(); }
-    bet('b'); bet('a');
-    assert.deepEqual(game.snapshot('a')!.players.map(p => p.id), ['a','b']);
+    while (game.snapshot('a')!.phase === 'playing') {
+      clock += 31000;
+      game.tick();
+    }
+    bet('b');
+    bet('a');
+    assert.deepEqual(
+      game.snapshot('a')!.players.map((p) => p.id),
+      ['a', 'b'],
+    );
     assert.equal(game.snapshot('a')!.deadline, clock + 3000);
-  } finally { db.close(); rmSync(dir,{recursive:true,force:true}); }
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

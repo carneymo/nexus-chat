@@ -1272,7 +1272,10 @@ export function createApp(config: Config) {
     }
   }, 1000);
   blackjackTimer.unref();
+  let externalDataVersion = db.prepare('PRAGMA data_version').get()?.data_version;
   const heartbeat = setInterval(() => {
+    const version = db.prepare('PRAGMA data_version').get()?.data_version;
+    if (version !== externalDataVersion) { externalDataVersion = version; broadcast(); }
     if (community.expire()) broadcast();
     for (const client of clients) {
       if (
