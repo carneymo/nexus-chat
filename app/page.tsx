@@ -42,7 +42,7 @@ import {
 } from '@/components/community-panel';
 import { AdminPanel } from '@/components/admin-panel';
 import { GifPicker, GifMessage } from '@/components/gif-picker';
-import { gifId, gifReference, type Gif } from '@/lib/giphy';
+import { gifId, gifReference, isGifFromToday, type Gif } from '@/lib/giphy';
 import { VoicePanel } from '@/components/voice-panel';
 import type { VoiceMember } from '@/lib/voice-client';
 import { mergeMessages, messageCursor } from '@/lib/message-state';
@@ -180,13 +180,10 @@ export default function Home() {
     };
   }, [gifUserId]);
   const gifContext = [gifUserId, channel, recipient?.id].join(':');
-  const [gifHistoryBoundary, setGifHistoryBoundary] = useState(0);
+  const [gifToday, setGifToday] = useState<number | null>(null);
   const [previousGifContext, setPreviousGifContext] = useState(gifContext);
   if (previousGifContext !== gifContext) {
     setPreviousGifContext(gifContext);
-    setGifHistoryBoundary(
-      Math.max(0, ...state.messages.map((message) => message.id)),
-    );
     setSelectedGif(null);
     setGifOpen(false);
   }
@@ -337,6 +334,7 @@ export default function Home() {
       void refresh().catch(() => {});
     }, 0);
     const tick = () => {
+      setGifToday(new Date().setHours(0, 0, 0, 0));
       setClock(
         new Date().toLocaleTimeString([], {
           hour: '2-digit',
@@ -1034,7 +1032,10 @@ export default function Home() {
                               key={lineIndex}
                               id={gifId(line)!}
                               apiKey={gifApiKey}
-                              autoLoad={message.id > gifHistoryBoundary}
+                              autoLoad={isGifFromToday(
+                                message.createdAt,
+                                gifToday,
+                              )}
                             />
                           ) : (
                             <span key={lineIndex}>

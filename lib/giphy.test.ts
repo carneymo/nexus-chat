@@ -48,3 +48,18 @@ void test('GIF API surfaces rate limits and omits browser credentials', async (t
     /limit reached/,
   );
 });
+
+void test('GIF autoplay uses the local calendar day, including reload and midnight boundaries', async () => {
+  const { isGifFromToday } = await import('./giphy.ts');
+  const today = new Date(2026, 8, 7, 0, 0, 0).getTime();
+  assert.equal(isGifFromToday(today, today), true);
+  assert.equal(
+    isGifFromToday(new Date(2026, 8, 7, 23, 59).getTime(), today),
+    true,
+  );
+  assert.equal(isGifFromToday(today - 1, today), false);
+  assert.equal(isGifFromToday(new Date(2026, 8, 8).getTime(), today), false);
+  assert.equal(isGifFromToday(new Date(2025, 8, 7).getTime(), today), false);
+  assert.equal(isGifFromToday(today, null), false);
+  assert.equal(isGifFromToday(NaN, today), false);
+});

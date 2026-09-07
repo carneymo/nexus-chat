@@ -80,3 +80,17 @@ export async function giphyRequest(
     );
   return (await r.json()) as { data: unknown };
 }
+
+export function isGifFromToday(
+  createdAt: number,
+  today: number | null,
+): boolean {
+  if (today === null || !Number.isFinite(createdAt)) return false;
+  const messageDate = new Date(createdAt);
+  const currentDate = new Date(today);
+  return (
+    messageDate.getFullYear() === currentDate.getFullYear() &&
+    messageDate.getMonth() === currentDate.getMonth() &&
+    messageDate.getDate() === currentDate.getDate()
+  );
+}
