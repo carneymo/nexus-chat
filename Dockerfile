@@ -11,6 +11,7 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 DATA_DIR=/data STATIC_DIR=/app/di
 WORKDIR /app
 COPY --from=build /app/dist/client ./dist/client
 COPY server ./server
+COPY lib/blackjack-stats.ts ./lib/blackjack-stats.ts
 COPY scripts/backup.mjs ./scripts/backup.mjs
 COPY scripts/grant-admin.ts ./scripts/grant-admin.ts
 COPY package.json ./package.json
