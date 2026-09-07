@@ -800,11 +800,6 @@ export default function Home() {
                 </button>
               </div>
             </header>
-            {state.me && (
-              <div className="conversation-tools">
-                <button onClick={() => open('search')}>Search</button>
-              </div>
-            )}
             <VoicePanel
               key={`${viewerId}-${channel}`}
               channel={channel}
@@ -819,59 +814,64 @@ export default function Home() {
               aria-live="polite"
             >
               {state.me && (
-                <button
-                  className="history-button"
-                  onClick={() =>
-                    void act(async () => {
-                      const query = new URLSearchParams(
-                        recipient ? { peer: recipient.id } : { channel },
-                      );
-                      query.set(
-                        'before',
-                        String(
-                          Math.min(
-                            ...messages.map((m) => m.id),
-                            Number.MAX_SAFE_INTEGER,
+                <div className="history-tools">
+                  <button
+                    className="history-button"
+                    onClick={() =>
+                      void act(async () => {
+                        const query = new URLSearchParams(
+                          recipient ? { peer: recipient.id } : { channel },
+                        );
+                        query.set(
+                          'before',
+                          String(
+                            Math.min(
+                              ...messages.map((m) => m.id),
+                              Number.MAX_SAFE_INTEGER,
+                            ),
                           ),
-                        ),
-                      );
-                      const page = await api<{ messages: Message[] }>(
-                        'history?' + query,
-                      );
-                      const view = log.current;
-                      if (view && page.messages.length)
-                        scrollRestore.current = {
-                          height: view.scrollHeight,
-                          top: view.scrollTop,
-                        };
-                      setState((previous) =>
-                        !previous.me
-                          ? previous
-                          : {
-                              ...previous,
-                              messages: mergeMessages(
-                                previous.messages,
-                                page.messages,
-                                previous.me.id,
-                                previous.me.channel,
-                                previous.community?.preferences
-                                  .filter((p) => p.blocked || p.muted)
-                                  .map((p) => p.peer_id),
-                              ),
-                            },
-                      );
-                      if (!page.messages.length)
-                        addEvent('No earlier messages.');
-                    })
-                  }
-                >
-                  Load earlier messages
-                </button>
+                        );
+                        const page = await api<{ messages: Message[] }>(
+                          'history?' + query,
+                        );
+                        const view = log.current;
+                        if (view && page.messages.length)
+                          scrollRestore.current = {
+                            height: view.scrollHeight,
+                            top: view.scrollTop,
+                          };
+                        setState((previous) =>
+                          !previous.me
+                            ? previous
+                            : {
+                                ...previous,
+                                messages: mergeMessages(
+                                  previous.messages,
+                                  page.messages,
+                                  previous.me.id,
+                                  previous.me.channel,
+                                  previous.community?.preferences
+                                    .filter((p) => p.blocked || p.muted)
+                                    .map((p) => p.peer_id),
+                                ),
+                              },
+                        );
+                        if (!page.messages.length)
+                          addEvent('No earlier messages.');
+                      })
+                    }
+                  >
+                    Load earlier messages
+                  </button>
+                  <button
+                    className="history-button"
+                    onClick={() => open('search')}
+                  >
+                    Search
+                  </button>
+                </div>
               )}
               <div className="channel-intro">
-                <div className="intro-mark">
-                  <Radio size={25} strokeWidth={1.25} />
-                </div>
                 <p>YOU HAVE REACHED</p>
                 <h2>{recipient ? recipient.name : channel}</h2>
                 <span>
@@ -1621,7 +1621,9 @@ export default function Home() {
                               }
                               required
                             />
-                            <span>●</span>
+                            <span className="color-swatch" aria-hidden="true">
+                              ✓
+                            </span>
                             <span className="sr-only">
                               {
                                 [

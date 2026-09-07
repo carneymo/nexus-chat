@@ -1847,19 +1847,49 @@ button:hover {
   padding: 8px 0;
   border: 0;
 }
-.profile-colors label {
-  display: flex;
+.dialog-form .profile-colors label {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-width: 42px;
-  min-height: 42px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
 }
-.profile-colors input {
-  width: auto;
+.profile-colors input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
 }
-.profile-colors label > span:not(.sr-only) {
-  font-size: 24px;
+.profile-colors .color-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: currentColor;
+  border: 3px solid #151b10;
+  box-shadow: 0 0 0 1px #626849;
+  border-radius: 4px;
+  font-size: 0;
+}
+.profile-colors input:checked + .color-swatch {
+  background: #151b10;
+  border-color: currentColor;
+  font-size: 23px;
+  font-weight: bold;
+}
+.profile-colors input:focus-visible + .color-swatch {
+  outline: 2px solid #f1d17e;
+  outline-offset: 4px;
+}
+.history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 @media (min-width: 801px) {
   .command-rail {
