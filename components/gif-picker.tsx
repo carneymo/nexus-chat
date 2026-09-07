@@ -145,7 +145,10 @@ export function GifMessage({ id, apiKey }: { id: string; apiKey: string }) {
       const data = await giphyRequest(apiKey, '/' + id, {}, controller.signal);
       const value = parseGif(data.data);
       if (!value) throw Error('This GIF is no longer available.');
-      if (!controller.signal.aborted) setGif(value);
+      if (!controller.signal.aborted) {
+        setGif(value);
+        setPlaying(true);
+      }
     } catch (e) {
       if (!controller.signal.aborted)
         setError(e instanceof Error ? e.message : 'GIF unavailable.');
