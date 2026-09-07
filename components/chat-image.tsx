@@ -2,6 +2,12 @@
 /* Authenticated, uncached images must be served directly by the gateway. */
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useRef, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 export function ImageDraft({
   file,
@@ -56,6 +62,7 @@ export function ChatImage({
 }) {
   const [unavailable, setUnavailable] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [viewerUnavailable, setViewerUnavailable] = useState(false);
   if (deleted)
     return (
       <span className="image-unavailable">Image deleted or unavailable</span>
@@ -65,19 +72,40 @@ export function ChatImage({
       {unavailable ? (
         <span className="image-unavailable">Image unavailable</span>
       ) : (
-        <a
-          href={`/api/images/${id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Open image: ${name}`}
+        <Dialog
+          onOpenChange={(open) => {
+            if (open) setViewerUnavailable(false);
+          }}
         >
-          <img
-            src={`/api/images/${id}`}
-            alt={name}
-            loading="lazy"
-            onError={() => setUnavailable(true)}
-          />
-        </a>
+          <DialogTrigger
+            className="chat-image-trigger"
+            aria-label={`Enlarge image: ${name}`}
+          >
+            <img
+              src={`/api/images/${id}`}
+              alt={name}
+              loading="lazy"
+              onError={() => setUnavailable(true)}
+            />
+          </DialogTrigger>
+          <DialogContent
+            className="nexus-dialog image-viewer"
+            aria-describedby={undefined}
+          >
+            <DialogTitle>{name}</DialogTitle>
+            {viewerUnavailable ? (
+              <output className="image-unavailable">
+                Image deleted or unavailable
+              </output>
+            ) : (
+              <img
+                src={`/api/images/${id}`}
+                alt={name}
+                onError={() => setViewerUnavailable(true)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       )}
       {own && (
         <button

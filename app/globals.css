@@ -412,10 +412,47 @@ button:hover {
   min-height: 0;
 }
 .chat-module {
+  container-type: inline-size;
   padding: 4px;
   border: 1px solid #151811;
   background: linear-gradient(120deg, #636658, #282d22 50%, #70634b);
   box-shadow: 0 1px #777360;
+}
+.channel-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.channel-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.channel-workspace > .blackjack-panel {
+  max-height: 38%;
+  min-height: 0;
+}
+@container (min-width: 660px) {
+  .channel-workspace {
+    flex-direction: row;
+    gap: 4px;
+  }
+  .channel-workspace > .blackjack-panel {
+    flex: 0 0 38%;
+    max-width: 420px;
+    max-height: none;
+    border: 1px solid #827957;
+  }
+  .channel-workspace .bj-players {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .channel-workspace .blackjack-panel header {
+    flex-wrap: wrap;
+  }
 }
 .panel-header {
   height: 40px;
@@ -2389,6 +2426,41 @@ button:hover {
   display: block;
   opacity: 0.65;
   font-style: italic;
+}
+.chat-image .chat-image-trigger {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-decoration: none;
+  cursor: zoom-in;
+}
+.chat-image-trigger:focus-visible {
+  outline: 2px solid #d9c596;
+  outline-offset: 4px;
+}
+.nexus-dialog.image-viewer {
+  width: fit-content;
+  max-width: calc(100vw - 28px) !important;
+  padding: 18px !important;
+}
+.image-viewer [data-slot='dialog-title'] {
+  padding-right: 28px;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.image-viewer > img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(90dvh - 110px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: auto;
+  border: 1px solid #78875f;
+  background: #10160d;
 }
 .image-draft span {
   overflow-wrap: anywhere;

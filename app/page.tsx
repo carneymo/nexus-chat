@@ -962,403 +962,410 @@ export default function Home() {
               userId={viewerId}
               members={state.voice || []}
             />
-            {state.me && state.blackjack && !recipient && (
-              <BlackjackPanel
-                table={state.blackjack}
-                sound={sound}
-                userId={state.me.id}
-                refresh={refresh}
-              />
-            )}
-            <LegacyScrollArea
-              className="chat-screen"
-              viewportRef={log}
-              role="log"
-              aria-label="Conversation"
-              aria-live="polite"
-            >
-              {state.me && (
-                <div className="history-tools">
-                  <button
-                    className="history-button"
-                    onClick={() =>
-                      void act(async () => {
-                        const query = new URLSearchParams(
-                          recipient ? { peer: recipient.id } : { channel },
-                        );
-                        query.set(
-                          'before',
-                          String(
-                            Math.min(
-                              ...messages.map((m) => m.id),
-                              Number.MAX_SAFE_INTEGER,
-                            ),
-                          ),
-                        );
-                        const page = await api<{ messages: Message[] }>(
-                          'history?' + query,
-                        );
-                        const view = log.current;
-                        if (view && page.messages.length)
-                          scrollRestore.current = {
-                            height: view.scrollHeight,
-                            top: view.scrollTop,
-                          };
-                        setState((previous) =>
-                          !previous.me
-                            ? previous
-                            : {
-                                ...previous,
-                                messages: mergeMessages(
-                                  previous.messages,
-                                  page.messages,
-                                  previous.me.id,
-                                  previous.me.channel,
-                                  previous.community?.preferences
-                                    .filter((p) => p.blocked || p.muted)
-                                    .map((p) => p.peer_id),
-                                ),
-                              },
-                        );
-                        if (!page.messages.length)
-                          addEvent('No earlier messages.');
-                      })
-                    }
-                  >
-                    Load earlier messages
-                  </button>
-                  <button
-                    className="history-button"
-                    onClick={() => open('search')}
-                  >
-                    Search
-                  </button>
-                </div>
-              )}
-              <div className="channel-intro">
-                <p>YOU HAVE REACHED</p>
-                <h2>{recipient ? recipient.name : channel}</h2>
-                <span>
-                  {recipient
-                    ? 'A private conversation between your accounts.'
-                    : 'The games change. The crew stays the same.'}
-                </span>
-              </div>
-              <div className="day-divider">
-                <span /> {date} <span />
-              </div>
-              <div className="system-lines">
-                <p>
-                  <span>»</span> Welcome to {state.serverName}. Make yourself at
-                  home.
-                </p>
-                <p>
-                  <span>»</span>{' '}
-                  {state.me
-                    ? `Signed in as ${state.me.name}.`
-                    : 'Your friends are one connection away.'}
-                </p>
-                <p className="muted">
-                  <span>»</span>{' '}
-                  {state.me
-                    ? 'Type /help for channel commands.'
-                    : 'Choose Connect to enter your callsign and join the channel.'}
-                </p>
-              </div>
-              {timeline.map((message) =>
-                message.kind === 'event' ? (
-                  <p className="event-line" key={message.id}>
-                    » {message.text}
-                  </p>
-                ) : (
-                  <div
-                    className={`message ${message.recipient ? 'private-message' : ''}`}
-                    key={message.id}
-                  >
-                    <time title={new Date(message.createdAt).toLocaleString()}>
-                      {new Date(message.createdAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                      })}
-                    </time>
-                    <div>
-                      <button
-                        className="callsign"
-                        style={{
-                          color: callsignColor(
-                            message.userId,
-                            state.members.find(
-                              (member) => member.id === message.userId,
-                            )?.color,
-                          ),
-                        }}
-                        onClick={() => {
-                          const member = state.members.find(
-                            (member) => member.id === message.userId,
-                          );
-                          if (member) {
-                            setProfileId(member.id);
-                            open('profile');
-                          }
-                        }}
-                      >
-                        {message.messageKind === 'action'
-                          ? `* ${state.members.find((m) => m.id === message.userId)?.name || message.name}`
-                          : `<${state.members.find((m) => m.id === message.userId)?.name || message.name}>`}
-                      </button>{' '}
-                      <span>
-                        {message.text.split('\n').map((line, lineIndex) =>
-                          gifId(line) ? (
-                            <GifMessage
-                              key={lineIndex}
-                              id={gifId(line)!}
-                              apiKey={gifApiKey}
-                              autoLoad={isGifFromToday(
-                                message.createdAt,
-                                gifToday,
-                              )}
-                            />
-                          ) : (
-                            <span key={lineIndex}>
-                              {messageLinks(line).map((part, index) =>
-                                part.href ? (
-                                  <a
-                                    key={index}
-                                    className="message-link"
-                                    href={part.href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {part.text}
-                                  </a>
-                                ) : (
-                                  part.text
-                                ),
-                              )}
-                              {lineIndex < message.text.split('\n').length - 1
-                                ? '\n'
-                                : ''}
-                            </span>
-                          ),
-                        )}
-                      </span>
-                      {message.imageName && (
-                        <ChatImage
-                          key={`${message.id}:${state.imageRevision || 0}`}
-                          id={message.id}
-                          name={message.imageName}
-                          deleted={Boolean(message.imageDeleted)}
-                          own={message.userId === state.me?.id}
-                          onDelete={async () => {
-                            await act(async () => {
-                              await api(`images/${message.id}/delete`, {});
-                              await refresh();
-                            });
-                          }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                ),
-              )}
-              {!state.me && (
-                <button
-                  className="connect-inline"
-                  onClick={() => open('connect')}
-                >
-                  <ChevronRight size={15} /> Enter the channel
-                </button>
-              )}
-            </LegacyScrollArea>
-            {recipient && (
-              <div className="whisper-strip">
-                <Lock size={13} /> Whispering to {recipient.name}
-                <button
-                  onClick={() => setRecipient(null)}
-                  aria-label="Return to channel"
-                >
-                  <X size={15} />
-                </button>
-              </div>
-            )}
-            {error && (
-              <p className="error-strip" role="alert">
-                {error}
-              </p>
-            )}
-            {draft.startsWith('/') && !draft.includes(' ') && (
-              <div
-                className="command-suggestions"
-                aria-label="Command suggestions"
-              >
-                {['/join', '/w', '/r', '/me', '/away', '/dnd', '/help']
-                  .filter((command) => command.startsWith(draft))
-                  .map((command) => (
-                    <button
-                      key={command}
-                      onClick={() => {
-                        setDraft(command + ' ');
-                        input.current?.focus();
-                      }}
-                    >
-                      {command}
-                    </button>
-                  ))}
-              </div>
-            )}
-            {selectedImage && (
-              <ImageDraft
-                file={selectedImage}
-                disabled={busy}
-                onRemove={() => setSelectedImage(null)}
-              />
-            )}
-            {selectedGif && (
-              <div className="gif-draft">
-                <img
-                  src={selectedGif.still}
-                  alt={selectedGif.title}
-                  referrerPolicy="no-referrer"
+            <div className="channel-workspace">
+              {state.me && state.blackjack && !recipient && (
+                <BlackjackPanel
+                  table={state.blackjack}
+                  sound={sound}
+                  userId={state.me.id}
+                  refresh={refresh}
                 />
-                <span>Ready to send · Powered By GIPHY</span>
-                <button
-                  disabled={busy}
-                  aria-label="Remove GIF"
-                  onClick={() => setSelectedGif(null)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            )}
-            {gifOpen && (
-              <GifPicker
-                open={gifOpen}
-                onClose={() => setGifOpen(false)}
-                onSelect={setSelectedGif}
-                apiKey={gifApiKey}
-              />
-            )}
-            <form
-              className="composer"
-              onSubmit={send}
-              onPaste={(event) => {
-                if (event.clipboardData.files.length) {
-                  event.preventDefault();
-                  chooseImage(event.clipboardData.files);
-                }
-              }}
-            >
-              <input
-                ref={imageInput}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                hidden
-                onChange={(event) => {
-                  chooseImage(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              {state.me && (
-                <button
-                  type="button"
-                  className="gif-button"
-                  aria-label="Upload image"
-                  title="Upload image (up to 5 MB)"
-                  disabled={busy}
-                  onClick={() => imageInput.current?.click()}
-                >
-                  <Plus size={18} />
-                </button>
               )}
-              <textarea
-                rows={1}
-                onFocus={() => setMobileMenu(false)}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === 'Tab' &&
-                    draft.startsWith('/') &&
-                    !draft.includes(' ')
-                  ) {
-                    const suggestion = [
-                      '/join',
-                      '/w',
-                      '/r',
-                      '/me',
-                      '/away',
-                      '/dnd',
-                      '/help',
-                    ].find((command) => command.startsWith(draft));
-                    if (suggestion) {
+              <div className="channel-conversation">
+                <LegacyScrollArea
+                  className="chat-screen"
+                  viewportRef={log}
+                  role="log"
+                  aria-label="Conversation"
+                  aria-live="polite"
+                >
+                  {state.me && (
+                    <div className="history-tools">
+                      <button
+                        className="history-button"
+                        onClick={() =>
+                          void act(async () => {
+                            const query = new URLSearchParams(
+                              recipient ? { peer: recipient.id } : { channel },
+                            );
+                            query.set(
+                              'before',
+                              String(
+                                Math.min(
+                                  ...messages.map((m) => m.id),
+                                  Number.MAX_SAFE_INTEGER,
+                                ),
+                              ),
+                            );
+                            const page = await api<{ messages: Message[] }>(
+                              'history?' + query,
+                            );
+                            const view = log.current;
+                            if (view && page.messages.length)
+                              scrollRestore.current = {
+                                height: view.scrollHeight,
+                                top: view.scrollTop,
+                              };
+                            setState((previous) =>
+                              !previous.me
+                                ? previous
+                                : {
+                                    ...previous,
+                                    messages: mergeMessages(
+                                      previous.messages,
+                                      page.messages,
+                                      previous.me.id,
+                                      previous.me.channel,
+                                      previous.community?.preferences
+                                        .filter((p) => p.blocked || p.muted)
+                                        .map((p) => p.peer_id),
+                                    ),
+                                  },
+                            );
+                            if (!page.messages.length)
+                              addEvent('No earlier messages.');
+                          })
+                        }
+                      >
+                        Load earlier messages
+                      </button>
+                      <button
+                        className="history-button"
+                        onClick={() => open('search')}
+                      >
+                        Search
+                      </button>
+                    </div>
+                  )}
+                  <div className="channel-intro">
+                    <p>YOU HAVE REACHED</p>
+                    <h2>{recipient ? recipient.name : channel}</h2>
+                    <span>
+                      {recipient
+                        ? 'A private conversation between your accounts.'
+                        : 'The games change. The crew stays the same.'}
+                    </span>
+                  </div>
+                  <div className="day-divider">
+                    <span /> {date} <span />
+                  </div>
+                  <div className="system-lines">
+                    <p>
+                      <span>»</span> Welcome to {state.serverName}. Make
+                      yourself at home.
+                    </p>
+                    <p>
+                      <span>»</span>{' '}
+                      {state.me
+                        ? `Signed in as ${state.me.name}.`
+                        : 'Your friends are one connection away.'}
+                    </p>
+                    <p className="muted">
+                      <span>»</span>{' '}
+                      {state.me
+                        ? 'Type /help for channel commands.'
+                        : 'Choose Connect to enter your callsign and join the channel.'}
+                    </p>
+                  </div>
+                  {timeline.map((message) =>
+                    message.kind === 'event' ? (
+                      <p className="event-line" key={message.id}>
+                        » {message.text}
+                      </p>
+                    ) : (
+                      <div
+                        className={`message ${message.recipient ? 'private-message' : ''}`}
+                        key={message.id}
+                      >
+                        <time
+                          title={new Date(message.createdAt).toLocaleString()}
+                        >
+                          {new Date(message.createdAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false,
+                          })}
+                        </time>
+                        <div>
+                          <button
+                            className="callsign"
+                            style={{
+                              color: callsignColor(
+                                message.userId,
+                                state.members.find(
+                                  (member) => member.id === message.userId,
+                                )?.color,
+                              ),
+                            }}
+                            onClick={() => {
+                              const member = state.members.find(
+                                (member) => member.id === message.userId,
+                              );
+                              if (member) {
+                                setProfileId(member.id);
+                                open('profile');
+                              }
+                            }}
+                          >
+                            {message.messageKind === 'action'
+                              ? `* ${state.members.find((m) => m.id === message.userId)?.name || message.name}`
+                              : `<${state.members.find((m) => m.id === message.userId)?.name || message.name}>`}
+                          </button>{' '}
+                          <span>
+                            {message.text.split('\n').map((line, lineIndex) =>
+                              gifId(line) ? (
+                                <GifMessage
+                                  key={lineIndex}
+                                  id={gifId(line)!}
+                                  apiKey={gifApiKey}
+                                  autoLoad={isGifFromToday(
+                                    message.createdAt,
+                                    gifToday,
+                                  )}
+                                />
+                              ) : (
+                                <span key={lineIndex}>
+                                  {messageLinks(line).map((part, index) =>
+                                    part.href ? (
+                                      <a
+                                        key={index}
+                                        className="message-link"
+                                        href={part.href}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                      >
+                                        {part.text}
+                                      </a>
+                                    ) : (
+                                      part.text
+                                    ),
+                                  )}
+                                  {lineIndex <
+                                  message.text.split('\n').length - 1
+                                    ? '\n'
+                                    : ''}
+                                </span>
+                              ),
+                            )}
+                          </span>
+                          {message.imageName && (
+                            <ChatImage
+                              key={`${message.id}:${state.imageRevision || 0}`}
+                              id={message.id}
+                              name={message.imageName}
+                              deleted={Boolean(message.imageDeleted)}
+                              own={message.userId === state.me?.id}
+                              onDelete={async () => {
+                                await act(async () => {
+                                  await api(`images/${message.id}/delete`, {});
+                                  await refresh();
+                                });
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                  {!state.me && (
+                    <button
+                      className="connect-inline"
+                      onClick={() => open('connect')}
+                    >
+                      <ChevronRight size={15} /> Enter the channel
+                    </button>
+                  )}
+                </LegacyScrollArea>
+                {recipient && (
+                  <div className="whisper-strip">
+                    <Lock size={13} /> Whispering to {recipient.name}
+                    <button
+                      onClick={() => setRecipient(null)}
+                      aria-label="Return to channel"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
+                {error && (
+                  <p className="error-strip" role="alert">
+                    {error}
+                  </p>
+                )}
+                {draft.startsWith('/') && !draft.includes(' ') && (
+                  <div
+                    className="command-suggestions"
+                    aria-label="Command suggestions"
+                  >
+                    {['/join', '/w', '/r', '/me', '/away', '/dnd', '/help']
+                      .filter((command) => command.startsWith(draft))
+                      .map((command) => (
+                        <button
+                          key={command}
+                          onClick={() => {
+                            setDraft(command + ' ');
+                            input.current?.focus();
+                          }}
+                        >
+                          {command}
+                        </button>
+                      ))}
+                  </div>
+                )}
+                {selectedImage && (
+                  <ImageDraft
+                    file={selectedImage}
+                    disabled={busy}
+                    onRemove={() => setSelectedImage(null)}
+                  />
+                )}
+                {selectedGif && (
+                  <div className="gif-draft">
+                    <img
+                      src={selectedGif.still}
+                      alt={selectedGif.title}
+                      referrerPolicy="no-referrer"
+                    />
+                    <span>Ready to send · Powered By GIPHY</span>
+                    <button
+                      disabled={busy}
+                      aria-label="Remove GIF"
+                      onClick={() => setSelectedGif(null)}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                )}
+                {gifOpen && (
+                  <GifPicker
+                    open={gifOpen}
+                    onClose={() => setGifOpen(false)}
+                    onSelect={setSelectedGif}
+                    apiKey={gifApiKey}
+                  />
+                )}
+                <form
+                  className="composer"
+                  onSubmit={send}
+                  onPaste={(event) => {
+                    if (event.clipboardData.files.length) {
                       event.preventDefault();
-                      setDraft(suggestion + ' ');
-                      return;
+                      chooseImage(event.clipboardData.files);
                     }
-                  }
-                  if (
-                    event.key === 'Enter' &&
-                    !event.shiftKey &&
-                    !event.nativeEvent.isComposing &&
-                    window.matchMedia('(min-width: 801px)').matches
-                  ) {
-                    event.preventDefault();
-                    event.currentTarget.form?.requestSubmit();
-                  }
-                }}
-                ref={input}
-                disabled={busy}
-                aria-label="Message"
-                placeholder={
-                  state.me
-                    ? `Message ${recipient?.name || channel}…`
-                    : 'Connect to join the conversation…'
-                }
-                maxLength={2000}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                autoComplete="off"
-              />
-              {state.me && (
-                <button
-                  type="button"
-                  className="gif-button"
-                  disabled={busy}
-                  aria-label="Choose GIF"
-                  onClick={() => setGifOpen(true)}
+                  }}
                 >
-                  GIF
-                </button>
-              )}
-              <button
-                type="button"
-                className="composer-command-help"
-                aria-label="Show chat commands"
-                title="Chat commands"
-                onClick={() =>
-                  addEvent('/join channel · /w callsign message · /help')
-                }
-              >
-                ?
-              </button>
-              <button
-                className="send-button"
-                disabled={
-                  busy ||
-                  (!!state.me &&
-                    !draft.trim() &&
-                    !selectedGif &&
-                    !selectedImage)
-                }
-                type="submit"
-              >
-                Send <ChevronRight size={15} />
-              </button>
-            </form>
-            {draft.length >= 1800 && (
-              <div className="composer-help">
-                <span>{draft.length} / 2000</span>
+                  <input
+                    ref={imageInput}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    hidden
+                    onChange={(event) => {
+                      chooseImage(event.target.files);
+                      event.target.value = '';
+                    }}
+                  />
+                  {state.me && (
+                    <button
+                      type="button"
+                      className="gif-button"
+                      aria-label="Upload image"
+                      title="Upload image (up to 5 MB)"
+                      disabled={busy}
+                      onClick={() => imageInput.current?.click()}
+                    >
+                      <Plus size={18} />
+                    </button>
+                  )}
+                  <textarea
+                    rows={1}
+                    onFocus={() => setMobileMenu(false)}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === 'Tab' &&
+                        draft.startsWith('/') &&
+                        !draft.includes(' ')
+                      ) {
+                        const suggestion = [
+                          '/join',
+                          '/w',
+                          '/r',
+                          '/me',
+                          '/away',
+                          '/dnd',
+                          '/help',
+                        ].find((command) => command.startsWith(draft));
+                        if (suggestion) {
+                          event.preventDefault();
+                          setDraft(suggestion + ' ');
+                          return;
+                        }
+                      }
+                      if (
+                        event.key === 'Enter' &&
+                        !event.shiftKey &&
+                        !event.nativeEvent.isComposing &&
+                        window.matchMedia('(min-width: 801px)').matches
+                      ) {
+                        event.preventDefault();
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                    ref={input}
+                    disabled={busy}
+                    aria-label="Message"
+                    placeholder={
+                      state.me
+                        ? `Message ${recipient?.name || channel}…`
+                        : 'Connect to join the conversation…'
+                    }
+                    maxLength={2000}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    autoComplete="off"
+                  />
+                  {state.me && (
+                    <button
+                      type="button"
+                      className="gif-button"
+                      disabled={busy}
+                      aria-label="Choose GIF"
+                      onClick={() => setGifOpen(true)}
+                    >
+                      GIF
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="composer-command-help"
+                    aria-label="Show chat commands"
+                    title="Chat commands"
+                    onClick={() =>
+                      addEvent('/join channel · /w callsign message · /help')
+                    }
+                  >
+                    ?
+                  </button>
+                  <button
+                    className="send-button"
+                    disabled={
+                      busy ||
+                      (!!state.me &&
+                        !draft.trim() &&
+                        !selectedGif &&
+                        !selectedImage)
+                    }
+                    type="submit"
+                  >
+                    Send <ChevronRight size={15} />
+                  </button>
+                </form>
+                {draft.length >= 1800 && (
+                  <div className="composer-help">
+                    <span>{draft.length} / 2000</span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </section>
           <aside
             id="channel-roster"
