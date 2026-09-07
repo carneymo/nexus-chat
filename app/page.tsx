@@ -94,7 +94,6 @@ type State = {
   serverName: string;
 };
 type Panel =
-  | 'report'
   | 'search'
   | 'connect'
   | 'channels'
@@ -187,7 +186,6 @@ export default function Home() {
     setSelectedGif(null);
     setGifOpen(false);
   }
-  const [reportMessage, setReportMessage] = useState<Message | null>(null);
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const pendingSend = useRef<{ key: string; nonce: string } | null>(null);
   const currentState = useRef(state);
@@ -1061,16 +1059,6 @@ export default function Home() {
                           ),
                         )}
                       </span>
-                      <button
-                        className="report-message"
-                        aria-label="Report message"
-                        onClick={() => {
-                          setReportMessage(message);
-                          open('report');
-                        }}
-                      >
-                        Report
-                      </button>
                     </div>
                   </div>
                 ),
@@ -1411,25 +1399,23 @@ export default function Home() {
       >
         <DialogContent className="nexus-dialog">
           <DialogTitle>
-            {panel === 'report'
-              ? 'Report message'
-              : panel === 'search'
-                ? 'Search conversation'
-                : panel === 'connect'
-                  ? authMode === 'register'
-                    ? 'Create account'
-                    : 'Welcome back'
-                  : panel === 'channels'
-                    ? 'Select channel'
-                    : panel === 'create'
-                      ? 'Create channel'
-                      : panel === 'friends'
-                        ? 'Your friends'
-                        : panel === 'profile'
-                          ? 'Member profile'
-                          : panel === 'admin'
-                            ? 'Server management'
-                            : 'Terminal options'}
+            {panel === 'search'
+              ? 'Search conversation'
+              : panel === 'connect'
+                ? authMode === 'register'
+                  ? 'Create account'
+                  : 'Welcome back'
+                : panel === 'channels'
+                  ? 'Select channel'
+                  : panel === 'create'
+                    ? 'Create channel'
+                    : panel === 'friends'
+                      ? 'Your friends'
+                      : panel === 'profile'
+                        ? 'Member profile'
+                        : panel === 'admin'
+                          ? 'Server management'
+                          : 'Terminal options'}
           </DialogTitle>
           {error && (
             <p role="alert" className="error-strip">
@@ -1539,36 +1525,6 @@ export default function Home() {
                     ? 'Create account'
                     : 'Sign in'}
               </button>
-            </form>
-          )}
-          {panel === 'report' && reportMessage && (
-            <form
-              className="dialog-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const reason = new FormData(e.currentTarget).get('reason');
-                void mutate({
-                  action: 'report',
-                  messageId: reportMessage.id,
-                  reason,
-                })
-                  .then(() => {
-                    setPanel(null);
-                    addEvent('Report sent to the server administrator.');
-                  })
-                  .catch(() => {});
-              }}
-            >
-              <p>
-                This shares the selected message and your reason with the server
-                administrator.
-              </p>
-              <blockquote>{reportMessage.text}</blockquote>
-              <label>
-                Reason
-                <textarea name="reason" required maxLength={500} />
-              </label>
-              <button className="dialog-action">Send report</button>
             </form>
           )}
           {panel === 'search' && (
