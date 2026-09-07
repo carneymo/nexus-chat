@@ -173,6 +173,7 @@ export default function Home() {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [chatFocus, setChatFocus] = useState(false);
+  const [mobileTable, setMobileTable] = useState(false);
   const [viewport, setViewport] = useState({
     height: 0,
     top: 0,
@@ -962,7 +963,32 @@ export default function Home() {
               userId={viewerId}
               members={state.voice || []}
             />
-            <div className="channel-workspace">
+            {state.me && state.blackjack && !recipient && (
+              <fieldset className="game-view-switch" aria-label="Channel view">
+                <button
+                  type="button"
+                  aria-pressed={!mobileTable}
+                  onClick={() => setMobileTable(false)}
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={mobileTable}
+                  onClick={() => setMobileTable(true)}
+                >
+                  Blackjack
+                  {state.blackjack.players.some(
+                    (player) => player.id === state.me?.id && player.active,
+                  )
+                    ? ' · Your turn'
+                    : ''}
+                </button>
+              </fieldset>
+            )}
+            <div
+              className={`channel-workspace ${state.me && state.blackjack && !recipient ? (mobileTable ? 'show-game' : 'show-chat') : ''}`}
+            >
               {state.me && state.blackjack && !recipient && (
                 <BlackjackPanel
                   table={state.blackjack}

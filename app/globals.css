@@ -433,10 +433,37 @@ button:hover {
   min-height: 0;
 }
 .channel-workspace > .blackjack-panel {
-  max-height: 38%;
+  flex: 1;
+  max-height: none;
   min-height: 0;
 }
+.game-view-switch {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 4px 0;
+}
+.game-view-switch button {
+  flex: 1;
+  min-height: 40px;
+  border: 1px outset #716c50;
+  background: #23291c;
+  color: #d9c596;
+}
+.game-view-switch button[aria-pressed='true'] {
+  background: #424b32;
+  border-bottom: 2px solid #b5ca82;
+}
+@container (max-width: 659.99px) {
+  .channel-workspace.show-chat > .blackjack-panel,
+  .channel-workspace.show-game > .channel-conversation {
+    display: none;
+  }
+}
 @container (min-width: 660px) {
+  .game-view-switch {
+    display: none;
+  }
   .channel-workspace {
     flex-direction: row;
     gap: 4px;
