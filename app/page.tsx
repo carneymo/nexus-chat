@@ -34,10 +34,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   FriendsPanel,
-  SessionInvites,
   SocialSettings,
   ChannelControls,
-  SessionsPanel,
   type CommunityState,
 } from '@/components/community-panel';
 import { AdminPanel } from '@/components/admin-panel';
@@ -93,7 +91,6 @@ type State = {
 };
 type Panel =
   | 'report'
-  | 'sessions'
   | 'search'
   | 'connect'
   | 'channels'
@@ -805,31 +802,7 @@ export default function Home() {
             </header>
             {state.me && (
               <div className="conversation-tools">
-                <button onClick={() => open('sessions')}>Open sessions</button>
                 <button onClick={() => open('search')}>Search</button>
-                <button
-                  onClick={() => {
-                    const last = [...state.messages]
-                      .reverse()
-                      .find((m) => m.recipient === viewerId);
-                    if (last) {
-                      const person = state.members.find(
-                        (m) => m.id === last.userId,
-                      );
-                      if (person) whisper(person);
-                    }
-                  }}
-                >
-                  Quick reply
-                </button>
-                <button
-                  onClick={() => {
-                    setDraft('/me ');
-                    input.current?.focus();
-                  }}
-                >
-                  Action
-                </button>
               </div>
             )}
             <VoicePanel
@@ -1303,25 +1276,23 @@ export default function Home() {
           <DialogTitle>
             {panel === 'report'
               ? 'Report message'
-              : panel === 'sessions'
-                ? 'Open sessions'
-                : panel === 'search'
-                  ? 'Search conversation'
-                  : panel === 'connect'
-                    ? authMode === 'register'
-                      ? 'Create account'
-                      : 'Welcome back'
-                    : panel === 'channels'
-                      ? 'Select channel'
-                      : panel === 'create'
-                        ? 'Create channel'
-                        : panel === 'friends'
-                          ? 'Your friends'
-                          : panel === 'profile'
-                            ? 'Member profile'
-                            : panel === 'admin'
-                              ? 'Server management'
-                              : 'Terminal options'}
+              : panel === 'search'
+                ? 'Search conversation'
+                : panel === 'connect'
+                  ? authMode === 'register'
+                    ? 'Create account'
+                    : 'Welcome back'
+                  : panel === 'channels'
+                    ? 'Select channel'
+                    : panel === 'create'
+                      ? 'Create channel'
+                      : panel === 'friends'
+                        ? 'Your friends'
+                        : panel === 'profile'
+                          ? 'Member profile'
+                          : panel === 'admin'
+                            ? 'Server management'
+                            : 'Terminal options'}
           </DialogTitle>
           {error && (
             <p role="alert" className="error-strip">
@@ -1463,14 +1434,6 @@ export default function Home() {
               <button className="dialog-action">Send report</button>
             </form>
           )}
-          {panel === 'sessions' && state.me && state.community && (
-            <SessionsPanel
-              state={state.community}
-              me={state.me}
-              members={state.members}
-              mutate={mutate}
-            />
-          )}
           {panel === 'search' && (
             <div className="social-form">
               <form
@@ -1541,14 +1504,6 @@ export default function Home() {
                   <ChevronRight size={15} />
                 </button>
               ))}
-              {state.me && state.community && (
-                <ChannelControls
-                  state={state.community}
-                  me={state.me}
-                  members={state.members}
-                  mutate={mutate}
-                />
-              )}
             </div>
           )}
           {panel === 'create' && (
@@ -1702,14 +1657,6 @@ export default function Home() {
                       Whisper to {person.name}
                     </button>
                   )}
-                  {state.me && state.community && person.id !== state.me.id && (
-                    <SessionInvites
-                      state={state.community}
-                      me={state.me}
-                      peer={person}
-                      mutate={mutate}
-                    />
-                  )}
                 </div>
               );
             })()}
@@ -1718,6 +1665,17 @@ export default function Home() {
             <button className="dialog-action" onClick={() => open('admin')}>
               Manage server · Admin
             </button>
+          )}
+          {panel === 'settings' && state.me && state.community && (
+            <details className="channel-options">
+              <summary>Channel settings · {channel}</summary>
+              <ChannelControls
+                state={state.community}
+                me={state.me}
+                members={state.members}
+                mutate={mutate}
+              />
+            </details>
           )}
           {panel === 'settings' && state.me && state.community && (
             <SocialSettings

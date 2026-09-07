@@ -71,3 +71,9 @@ This change adds application authorization and privacy controls, not end-to-end 
 Additional browser evidence: moderator assignment/profile badge, pin and notification toggles, shared-link destination, /me rendering, scoped search, report submission/admin resolution, quick reply, direct friend-list session invitation, 250-message stopped-server catchup, and 200-to-250 history pagination. Production remained untouched.
 
 Final UI command/notification checks: Tab expanded `/aw` to `/away`; /away and /dnd persisted; /help rendered; /join changed rooms; /w and /r delivered to the expected DM thread. Channel notice suppression and independent friend-online alerts passed a live SSE/browser check. The only unverified platform-specific item is a real Android keyboard/assistive-technology pass; viewport simulation is not a substitute for that device check.
+
+## Interface simplification
+
+The channel picker now contains only room discovery and joining by name. Channel links, access settings and moderation are under a collapsed Channel settings section in Options. Search remains visible; Open sessions, Action and Quick reply buttons and session invitation controls are removed from the interface. Existing session data/server support and optional slash commands remain intact. Open sessions are deferred from the product interface pending a demonstrated need. No schema or deployment configuration changes are required for this simplification.
+
+Simplification validation: type checking, lint, production build and diff checks passed. Local browser checks verified the join-only picker, collapsed Options entry with existing management controls, Search dialog, and absence of the three removed main buttons.

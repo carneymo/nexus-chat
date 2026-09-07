@@ -1992,3 +1992,16 @@ button:hover {
 .social-card .friend-offline {
   color: #929887;
 }
+
+.channel-options {
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+.channel-options summary {
+  cursor: pointer;
+  color: var(--foreground);
+  padding: 4px 0;
+}
+.channel-options[open] summary {
+  margin-bottom: 14px;
+}

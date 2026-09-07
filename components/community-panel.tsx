@@ -370,7 +370,6 @@ export function FriendsPanel({
                 </>
               )}
             </div>
-            <SessionInvites state={state} me={me} peer={m} mutate={mutate} />
           </section>
         );
       })}
