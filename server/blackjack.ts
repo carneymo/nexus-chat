@@ -27,10 +27,13 @@ type Table = {
   deadline: number;
   round: number;
   statsVersion?: number;
+  seats?: string[];
+  shuffledRound?: number;
 };
 type Dependencies = {
   fail: (status: number, message: string) => never;
   canAccess: (id: string, name: string) => boolean;
+  online?: (id: string) => boolean;
   now?: () => number;
   shuffle?: () => number[];
 };
@@ -152,14 +155,14 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         day,
         week,
       );
-      money(id, 1020, 'Initial weekly and daily credits');
+      money(id, 1200, 'Initial weekly and daily credits');
     } else {
       const days = Math.max(0, day - Number(w.day)),
         weeks = Math.max(0, week - Number(w.week));
       if (days || weeks) {
         money(
           id,
-          days * 20 + weeks * 1000,
+          days * 200 + weeks * 1000,
           `Scheduled grants: ${days} daily, ${weeks} weekly`,
         );
         db.prepare(
@@ -265,7 +268,10 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       t.deadline = 0;
       return;
     }
-    if (t.shoe.length < 208) t.shoe = shuffle();
+    if (t.shoe.length < 208) {
+      t.shoe = shuffle();
+      t.shuffledRound = t.round + 1;
+    }
     t.round++;
     t.statsVersion = 1;
     for (const p of t.players) count(p.id, { hands: 1 });
@@ -280,8 +286,32 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
     if (handValue(t.dealer).total === 21) settle(t);
     else advance(t);
   }
+  function shortenBetting(t: Table) {
+    if (t.phase !== 'betting' || !t.players.length || !deps.online)
+      return false;
+    const present = db
+      .prepare('SELECT id FROM users WHERE channel=? AND disabled=0')
+      .all(BLACKJACK_CHANNEL)
+      .map((u) => String(u.id))
+      .filter((id) => deps.online!(id) && allowed(id));
+    if (
+      !present.length ||
+      !present.every((id) => t.players.some((p) => p.id === id))
+    )
+      return false;
+    const deadline = now() + 3000;
+    if (t.deadline <= deadline) return false;
+    t.deadline = deadline;
+    return true;
+  }
   function tick() {
     const t = read();
+    if (shortenBetting(t)) {
+      return transaction(() => {
+        save(t);
+        return true;
+      });
+    }
     if (!t.deadline || now() < t.deadline) return false;
     return transaction(() => {
       if (t.phase === 'betting') deal(t);
@@ -318,6 +348,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         if (!Number.isInteger(bet) || bet < 10 || bet > 500 || bet % 10)
           fail(400, 'Bet 10–500 credits in increments of 10.');
         if (t.phase === 'settled') {
+          t.seats = t.players.map((p) => p.id);
           t.phase = 'betting';
           t.players = [];
           t.dealer = [];
@@ -332,7 +363,13 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
           id,
           hands: [{ cards: [], bet, done: false, split: false }],
         });
+        t.seats ||= [];
+        if (!t.seats.includes(id)) t.seats.push(id);
+        t.players.sort(
+          (a, b) => t.seats!.indexOf(a.id) - t.seats!.indexOf(b.id),
+        );
         if (!t.deadline) t.deadline = now() + 20000;
+        shortenBetting(t);
       } else if (data.action === 'cancel') {
         if (t.phase !== 'betting') fail(409, 'Cards already dealt.');
         const p = t.players.find((p) => p.id === id);
@@ -442,7 +479,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
           name: String(w.name),
           credits:
             Number(w.balance) +
-            Math.max(0, Math.floor(now() / 86400000) - Number(w.day)) * 20 +
+            Math.max(0, Math.floor(now() / 86400000) - Number(w.day)) * 200 +
             Math.max(
               0,
               Math.floor((Math.floor(now() / 86400000) + 3) / 7) -
@@ -473,6 +510,8 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       })),
       firstBettor: t.players[0]?.id,
       remainingCards: t.shoe.length,
+      shuffleNextRound: t.shoe.length < 208,
+      shuffledThisRound: t.shuffledRound === t.round,
     };
   }
   return { act, snapshot, tick };

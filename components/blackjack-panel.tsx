@@ -35,6 +35,8 @@ export type BlackjackState = {
   }[];
   firstBettor?: string;
   remainingCards: number;
+  shuffleNextRound?: boolean;
+  shuffledThisRound?: boolean;
 };
 function value(cards: number[]) {
   let total = 0,
@@ -53,7 +55,8 @@ function Cards({ cards }: { cards: (number | null)[] }) {
     <span className="bj-cards">
       {cards.map((card, i) => (
         <span
-          key={i}
+          key={`${i}-${card}`}
+          style={{ animationDelay: `${i * 180}ms` }}
           className={
             'bj-card ' +
             (card !== null && [1, 2].includes(Math.floor(card / 13))
@@ -154,7 +157,14 @@ export function BlackjackPanel({
         {table.deadline > 0 &&
           ` · ${Math.max(0, Math.min(table.phase === 'betting' ? 20 : 30, Math.ceil((table.deadline - now) / 1000)))}s`}
       </p>
-      <div className="bj-table">
+      <p className="bj-status">
+        {table.shuffleNextRound
+          ? 'Cut card reached · Fresh six-deck shoe before the next deal.'
+          : table.shuffledThisRound
+            ? 'Fresh six-deck shoe shuffled and cut this round.'
+            : `${table.remainingCards} cards in the shoe · Shuffle below 208 cards, between rounds.`}
+      </p>
+      <div className="bj-table" key={table.round}>
         <div className="bj-dealer">
           <strong>Dealer · stands on soft 17</strong>
           <Cards cards={table.dealer} />
@@ -259,7 +269,7 @@ export function BlackjackPanel({
         )}
       </div>
       {table.balance < 10 && (
-        <p>Your next daily grant adds 20 credits at midnight UTC.</p>
+        <p>Your next daily grant adds 200 credits at midnight UTC.</p>
       )}
       {error && <output>{error}</output>}
       <details>
@@ -269,10 +279,12 @@ export function BlackjackPanel({
           soft 17. Double on your first two cards; double after split allowed.
           Up to four hands. Split aces get one card each; split 21 pays 1:1. No
           insurance or surrender. Bets: 10–500 in steps of 10. Six players.
-          Turns expire after 30 seconds and automatically stand.
+          Betting shortens to 3 seconds once everyone online in Blackjack has
+          bet. Returning players keep their seat order. Turns expire after 30
+          seconds and automatically stand.
         </p>
         <p>
-          Start with 1,020 credits. Add 20 each day and 1,000 each Monday at
+          Start with 1,200 credits. Add 200 each day and 1,000 each Monday at
           00:00 UTC. Unused and missed grants accumulate. No purchases,
           transfers, or cash-out. Wagers are committed once dealt; leaving does
           not refund them.

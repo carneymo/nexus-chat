@@ -150,6 +150,7 @@ export function createApp(config: Config) {
   const blackjack = createBlackjack(db, {
     fail,
     canAccess: community.canAccess,
+    online,
   });
   function stateFor(id?: string) {
     const channelRows = community.channelList(id);

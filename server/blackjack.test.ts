@@ -45,7 +45,7 @@ void test('stats persist exactly once, respect access, and rank total credits fa
       ).run(id, id);
     game.snapshot('b');
     act('bet');
-    assert.equal(mine().credits, 1020); // stake remains in ranking
+    assert.equal(mine().credits, 1200); // stake remains in ranking
     act('cancel');
     assert.equal(mine().stats.hands, 0);
     act('bet');
@@ -67,7 +67,7 @@ void test('stats persist exactly once, respect access, and rank total credits fa
       timeouts: 0,
       net: 40,
     });
-    assert.equal(mine().credits, 1060);
+    assert.equal(mine().credits, 1240);
     game = createBlackjack(db, deps);
     assert.equal(mine().stats.hard15Doubles, 1);
     assert.equal(game.tick(), false);
@@ -92,7 +92,7 @@ void test('stats persist exactly once, respect access, and rank total credits fa
     clock += 86400000; //Monday: same grants for offline b and active a
     assert.equal(
       game.snapshot('a')!.leaderboard.find((p) => p.id === 'b')!.credits,
-      2040,
+      2400,
     );
     assert.equal(mine().stats.net, 40);
     db.prepare("UPDATE users SET disabled=1 WHERE id='b'").run();
@@ -146,12 +146,12 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     db.prepare('UPDATE blackjack_table SET state=?').run(JSON.stringify(state));
   };
   try {
-    assert.equal(game.snapshot('alice')!.balance, 1020);
-    assert.equal(game.snapshot('alice')!.balance, 1020);
+    assert.equal(game.snapshot('alice')!.balance, 1200);
+    assert.equal(game.snapshot('alice')!.balance, 1200);
     clock += 86400000;
-    assert.equal(game.snapshot('alice')!.balance, 2040); // Monday daily + weekly
+    assert.equal(game.snapshot('alice')!.balance, 2400); // Monday daily + weekly
     clock += 86400000;
-    assert.equal(game.snapshot('alice')!.balance, 2060);
+    assert.equal(game.snapshot('alice')!.balance, 2600);
     const data = {
       action: 'bet',
       bet: 20,
@@ -160,7 +160,7 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     };
     game.act('alice', data);
     game.act('alice', data);
-    assert.equal(game.snapshot('alice')!.balance, 2040);
+    assert.equal(game.snapshot('alice')!.balance, 2580);
     assert.throws(() => game.act('bob', data), /identifier already used/);
     assert.throws(
       () =>
@@ -172,12 +172,12 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
       /table changed/,
     );
     act('alice', 'cancel');
-    assert.equal(game.snapshot('alice')!.balance, 2060);
+    assert.equal(game.snapshot('alice')!.balance, 2600);
     // player blackjack versus dealer 19: stake20, returned50
     act('alice', 'bet');
     arrange([0, 9, 12, 8]);
     act('alice', 'deal');
-    assert.equal(game.snapshot('alice')!.balance, 2090);
+    assert.equal(game.snapshot('alice')!.balance, 2630);
     assert.equal(
       game.snapshot('alice')!.players[0].hands[0].result,
       'Blackjack · 3:2',
@@ -193,13 +193,13 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     );
     act('alice', 'stand');
     assert.deepEqual(game.snapshot('alice')!.dealer, [0, 5]);
-    assert.equal(game.snapshot('alice')!.balance, 2110);
+    assert.equal(game.snapshot('alice')!.balance, 2650);
     // double: eleven ->21 versus dealer17
     act('alice', 'bet');
     arrange([4, 9, 5, 6, 9]);
     act('alice', 'deal');
     act('alice', 'double');
-    assert.equal(game.snapshot('alice')!.balance, 2150);
+    assert.equal(game.snapshot('alice')!.balance, 2690);
     // two split eights; both stand at18 versus17
     act('alice', 'bet');
     arrange([7, 9, 20, 6, 9, 9]);
@@ -208,22 +208,22 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     assert.equal(game.snapshot('alice')!.players[0].hands.length, 2);
     act('alice', 'stand');
     act('alice', 'stand');
-    assert.equal(game.snapshot('alice')!.balance, 2190);
+    assert.equal(game.snapshot('alice')!.balance, 2730);
     // split aces receive one card, 21 pays ordinary win
     act('alice', 'bet');
     arrange([0, 9, 13, 6, 9, 9]);
     act('alice', 'deal');
     act('alice', 'split');
     assert.equal(game.snapshot('alice')!.phase, 'settled');
-    assert.equal(game.snapshot('alice')!.balance, 2230);
+    assert.equal(game.snapshot('alice')!.balance, 2770);
     // opening dealer blackjack settles immediately
     act('alice', 'bet');
     arrange([9, 0, 8, 12]);
     act('alice', 'deal');
-    assert.equal(game.snapshot('alice')!.balance, 2210);
+    assert.equal(game.snapshot('alice')!.balance, 2750);
     // invalid bets cannot debit
     assert.throws(() => act('alice', 'bet', 15), /increments/);
-    assert.equal(game.snapshot('alice')!.balance, 2210);
+    assert.equal(game.snapshot('alice')!.balance, 2750);
     // persisted hand recovers and timeout stands exactly once
     act('alice', 'bet');
     arrange([9, 9, 7, 6]);
@@ -235,7 +235,7 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     clock += 31000;
     assert.equal(game.tick(), true);
     assert.equal(game.tick(), false);
-    assert.equal(game.snapshot('alice')!.balance, 2230);
+    assert.equal(game.snapshot('alice')!.balance, 2770);
     access = false;
     assert.equal(game.snapshot('alice'), undefined);
     assert.throws(() => act('alice', 'bet'), /revision|Join Blackjack/);
@@ -246,7 +246,7 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     clock += 21000;
     game.tick();
     db.prepare("UPDATE users SET channel='Blackjack' WHERE id='alice'").run();
-    assert.equal(game.snapshot('alice')!.balance, 2230);
+    assert.equal(game.snapshot('alice')!.balance, 2770);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -339,7 +339,7 @@ void test('HTTP blackjack authorizes channel access and serializes simultaneous 
       (await post('blackjack', winner, { ...request, nonce })).status,
       200,
     );
-    assert.equal((await state(winner)).blackjack!.balance, 1000);
+    assert.equal((await state(winner)).blackjack!.balance, 1180);
     assert.equal(
       (await post('channel', bob, { name: 'The Lobby', existingOnly: true }))
         .status,
@@ -400,8 +400,8 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
     assert.throws(() => act('a', 'bet'), /Not enough/);
     assert.equal(game.snapshot('a')!.balance, 0);
     now += 86400000;
-    assert.equal(game.snapshot('a')!.balance, 20);
-    assert.equal(game.snapshot('a')!.balance, 20);
+    assert.equal(game.snapshot('a')!.balance, 200);
+    assert.equal(game.snapshot('a')!.balance, 200);
     act('a', 'bet');
     act('b', 'bet');
     const t = JSON.parse(
@@ -414,6 +414,7 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
     db.prepare('UPDATE blackjack_table SET state=?').run(JSON.stringify(t));
     act('a', 'deal');
     assert.throws(() => act('b', 'hit'), /not your turn/);
+    db.prepare("UPDATE blackjack_wallets SET balance=0 WHERE user_id='a'").run();
     assert.throws(() => act('a', 'double'), /Not enough/);
     assert.throws(() => act('a', 'split'), /Not enough/);
     assert.equal(game.snapshot('a')!.balance, 0);
@@ -438,4 +439,27 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
     db.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+void test('all present bettors shorten countdown and retain seats across rounds', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-ready-'));
+  const db = createStore(join(dir, 'test.sqlite'));
+  let clock = Date.UTC(2026, 8, 8), nonce = 0;
+  const game = createBlackjack(db, { now: () => clock, online: () => true, canAccess: () => true,
+    fail: (_, message): never => { throw Error(message); } });
+  try {
+    for (const id of ['a', 'b']) db.prepare("INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?,'x','x','Blackjack')").run(id,id);
+    const bet = (id: string) => game.act(id, {action:'bet',bet:20,revision:game.snapshot(id)!.revision,nonce:`ready-action-${String(++nonce).padStart(16,'0')}`});
+    bet('a');
+    assert.equal(game.snapshot('a')!.deadline, clock + 20000);
+    bet('b');
+    assert.equal(game.snapshot('a')!.deadline, clock + 3000);
+    clock += 3000;
+    assert.equal(game.tick(), true);
+    assert.equal(game.snapshot('a')!.shuffledThisRound, true);
+    while (game.snapshot('a')!.phase === 'playing') { clock += 31000; game.tick(); }
+    bet('b'); bet('a');
+    assert.deepEqual(game.snapshot('a')!.players.map(p => p.id), ['a','b']);
+    assert.equal(game.snapshot('a')!.deadline, clock + 3000);
+  } finally { db.close(); rmSync(dir,{recursive:true,force:true}); }
 });

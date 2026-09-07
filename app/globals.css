@@ -2848,3 +2848,22 @@ button:hover {
   cursor: pointer;
   padding: 8px 0;
 }
+
+@keyframes blackjack-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0);
+  }
+}
+.bj-card {
+  animation: blackjack-card-in 240ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bj-card {
+    animation: none;
+  }
+}
