@@ -1,7 +1,7 @@
 'use client';
 /* GIPHY media must load directly, without an image optimization proxy. */
 /* eslint-disable @next/next/no-img-element */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -129,14 +129,22 @@ export function GifPicker({
   );
 }
 
-export function GifMessage({ id, apiKey }: { id: string; apiKey: string }) {
+export function GifMessage({
+  id,
+  apiKey,
+  autoLoad = false,
+}: {
+  id: string;
+  apiKey: string;
+  autoLoad?: boolean;
+}) {
   const [gif, setGif] = useState<Gif | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
-  async function load() {
+  const load = useCallback(async () => {
     setBusy(true);
     setError('');
     const controller = new AbortController();
@@ -155,7 +163,14 @@ export function GifMessage({ id, apiKey }: { id: string; apiKey: string }) {
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
-  }
+  }, [apiKey, id]);
+  useEffect(() => {
+    if (!autoLoad || !apiKey) return;
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [autoLoad, apiKey, load]);
   return (
     <span className="gif-message">
       {gif ? (

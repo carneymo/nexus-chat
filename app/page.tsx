@@ -180,9 +180,13 @@ export default function Home() {
     };
   }, [gifUserId]);
   const gifContext = [gifUserId, channel, recipient?.id].join(':');
+  const [gifHistoryBoundary, setGifHistoryBoundary] = useState(0);
   const [previousGifContext, setPreviousGifContext] = useState(gifContext);
   if (previousGifContext !== gifContext) {
     setPreviousGifContext(gifContext);
+    setGifHistoryBoundary(
+      Math.max(0, ...state.messages.map((message) => message.id)),
+    );
     setSelectedGif(null);
     setGifOpen(false);
   }
@@ -1030,6 +1034,7 @@ export default function Home() {
                               key={lineIndex}
                               id={gifId(line)!}
                               apiKey={gifApiKey}
+                              autoLoad={message.id > gifHistoryBoundary}
                             />
                           ) : (
                             <span key={lineIndex}>
