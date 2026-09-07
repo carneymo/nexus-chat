@@ -622,6 +622,8 @@ button:hover {
   height: 44px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
   gap: 14px;
   padding: 0 17px;
   border: 1px solid #94815b;
