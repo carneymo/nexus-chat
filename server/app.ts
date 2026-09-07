@@ -1,3 +1,4 @@
+import { createBlackjack } from './blackjack.ts';
 import { createCommunity } from './community.ts';
 import {
   createServer,
@@ -129,6 +130,10 @@ export function createApp(config: Config) {
     online,
     removeVoice: (id) => voice.removeUser(id),
   });
+  const blackjack = createBlackjack(db, {
+    fail,
+    canAccess: community.canAccess,
+  });
   function stateFor(id?: string) {
     const channelRows = community.channelList(id);
     const base = {
@@ -187,6 +192,7 @@ export function createApp(config: Config) {
       members,
       messages: filtered,
       community: community.snapshot(id),
+      blackjack: blackjack.snapshot(id),
       voice: voice
         .roster()
         .filter((v) => community.visibleLocation(id, v.userId, v.channel)),
@@ -432,6 +438,16 @@ export function createApp(config: Config) {
         if (!session) fail(401, 'Connect to the gateway first.');
         if (pathname === '/api/gif-config' && request.method === 'GET') {
           json(response, 200, { apiKey: config.giphyApiKey || '' });
+          return;
+        }
+        if (pathname === '/api/blackjack' && request.method === 'POST') {
+          const data = await body(request);
+          if (!sessionFor(request)) fail(401, 'Session expired.');
+          rate('blackjack:' + session.user.id, 60, 60000);
+          if (blackjack.tick()) broadcast();
+          blackjack.act(session.user.id, data);
+          broadcast();
+          json(response, 200, { ok: true });
           return;
         }
         if (pathname === '/api/community' && request.method === 'POST') {
@@ -909,6 +925,20 @@ export function createApp(config: Config) {
   server.requestTimeout = 15_000;
   server.headersTimeout = 10_000;
   server.maxConnections = 300;
+  const blackjackTimer = setInterval(() => {
+    try {
+      if (blackjack.tick()) broadcast();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          component: 'blackjack',
+          error: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+    }
+  }, 1000);
+  blackjackTimer.unref();
   const heartbeat = setInterval(() => {
     if (community.expire()) broadcast();
     for (const client of clients) {
@@ -929,6 +959,7 @@ export function createApp(config: Config) {
   async function close() {
     closing = true;
     clearInterval(heartbeat);
+    clearInterval(blackjackTimer);
     voice.close();
     for (const client of clients) client.response.destroy();
     await new Promise<void>((resolve) => {

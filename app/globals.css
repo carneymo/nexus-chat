@@ -2156,3 +2156,127 @@ button:hover {
     font-size: 11px;
   }
 }
+.blackjack-panel {
+  flex-shrink: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 12px;
+  border-bottom: 2px solid #827957;
+  background: linear-gradient(135deg, #12281d, #182016);
+  color: #d6d7ba;
+  font-size: 12px;
+}
+.blackjack-panel header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #ead7a1;
+}
+.bj-status {
+  margin: 6px 0;
+  color: #adc987;
+}
+.bj-table {
+  padding: 8px 0;
+}
+.bj-dealer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.bj-cards {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+.bj-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 44px;
+  border: 1px solid #b3a67d;
+  border-radius: 3px;
+  background: #e4dcc0;
+  color: #17231b;
+  font:
+    bold 16px Georgia,
+    serif;
+}
+.bj-card.red {
+  color: #a52624;
+}
+.bj-players {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.bj-seat {
+  padding: 8px;
+  border: 1px solid #48583f;
+}
+.bj-seat.active {
+  border-color: #d6ba72;
+}
+.bj-active-hand {
+  border-left: 3px solid #adcd76;
+  padding-left: 5px;
+}
+.bj-actions,
+.bj-actions form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.bj-actions button {
+  padding: 8px 12px;
+  min-height: 40px;
+  border: 1px outset #827957;
+  background: #343d28;
+  color: #ead7a1;
+  cursor: pointer;
+}
+.bj-actions input {
+  width: 75px;
+  padding: 8px;
+  background: #0c150c;
+  border: 1px solid #827957;
+}
+.blackjack-panel details {
+  margin-top: 8px;
+}
+.blackjack-panel summary {
+  cursor: pointer;
+}
+@media (max-width: 800px) {
+  .blackjack-panel {
+    max-height: 45dvh;
+    padding: 8px;
+  }
+  .bj-players {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bj-dealer strong {
+    font-size: 11px;
+  }
+}
+.blackjack-panel {
+  display: flex;
+  flex-direction: column;
+}
+.blackjack-panel > header,
+.bj-status,
+.bj-actions,
+.blackjack-panel > details {
+  flex-shrink: 0;
+}
+.bj-table {
+  min-height: 0;
+  overflow-y: auto;
+}
+.bj-actions {
+  padding-top: 8px;
+}

@@ -43,6 +43,10 @@ import {
 import { AdminPanel } from '@/components/admin-panel';
 import { GifPicker, GifMessage } from '@/components/gif-picker';
 import { gifId, gifReference, isGifFromToday, type Gif } from '@/lib/giphy';
+import {
+  BlackjackPanel,
+  type BlackjackState,
+} from '@/components/blackjack-panel';
 import { VoicePanel } from '@/components/voice-panel';
 import type { VoiceMember } from '@/lib/voice-client';
 import { mergeMessages, messageCursor } from '@/lib/message-state';
@@ -87,6 +91,7 @@ type State = {
   generation?: string;
   community?: CommunityState;
   voice?: VoiceMember[];
+  blackjack?: BlackjackState;
   me: Member | null;
   channels: string[];
   members: Member[];
@@ -888,6 +893,13 @@ export default function Home() {
               userId={viewerId}
               members={state.voice || []}
             />
+            {state.me && state.blackjack && !recipient && (
+              <BlackjackPanel
+                table={state.blackjack}
+                userId={state.me.id}
+                refresh={refresh}
+              />
+            )}
             <LegacyScrollArea
               className="chat-screen"
               viewportRef={log}

@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "setup": "node scripts/setup.mjs",
     "backup": "node --env-file=.env scripts/backup.mjs",
-    "lint": "oxlint app lib server scripts vite.config.ts next.config.ts components/legacy-scroll-area.tsx components/ui/scroll-area.tsx components/ui/dialog.tsx components/ui/button.tsx components/ui/checkbox.tsx components/voice-panel.tsx components/admin-panel.tsx components/community-panel.tsx components/gif-picker.tsx",
+    "lint": "oxlint app lib server scripts vite.config.ts next.config.ts components/legacy-scroll-area.tsx components/ui/scroll-area.tsx components/ui/dialog.tsx components/ui/button.tsx components/ui/checkbox.tsx components/voice-panel.tsx components/admin-panel.tsx components/community-panel.tsx components/gif-picker.tsx components/blackjack-panel.tsx",
     "format": "oxfmt"
   },
   "dependencies": {
