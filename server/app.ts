@@ -1,3 +1,4 @@
+import { createCommunity } from './community.ts';
 import {
   createServer,
   type IncomingMessage,
@@ -59,12 +60,21 @@ export function createApp(config: Config) {
     throw new Error('INVITE_CODE must be at least 16 characters.');
   const db = createStore(config.databasePath);
   const clients = new Set<Client>();
+  let closing = false;
+  const generation = randomUUID();
+  let revision = 0;
   const limits = new Map<string, { count: number; until: number }>();
   const voice = createVoice(config, {
     body,
     json,
     fail,
     changed: broadcast,
+    authorize: (session) => {
+      const fresh = community.account(session.user.id);
+      if (!fresh || fresh.channel !== session.user.channel)
+        fail(409, 'Channel changed. Join voice again.');
+      community.requireAccess(session.user.id, session.user.channel);
+    },
     sessionValid: (hash) =>
       Boolean(
         db
@@ -109,14 +119,20 @@ export function createApp(config: Config) {
     return { user, hash, expires: record.expires };
   }
   const online = (id: string) =>
+    voice.roster().some((member) => member.userId === id) ||
     [...clients].some(
       (client) => client.session.user.id === id && !client.response.destroyed,
     );
+  const community = createCommunity(db, {
+    fail,
+    online,
+    removeVoice: (id) => voice.removeUser(id),
+  });
   function stateFor(id?: string) {
-    const channelRows = db
-      .prepare('SELECT name FROM channels WHERE archived = 0 ORDER BY rowid')
-      .all() as { name: string }[];
+    const channelRows = community.channelList(id);
     const base = {
+      generation,
+      revision,
       serverName: config.serverName,
       channels: channelRows.map((row) => row.name),
     };
@@ -124,14 +140,24 @@ export function createApp(config: Config) {
     const members = (
       db
         .prepare(
-          'SELECT id, COALESCE(display_name, name) AS name, name AS handle, color, channel, is_admin AS isAdmin FROM users WHERE disabled = 0 ORDER BY name COLLATE NOCASE',
+          'SELECT id, COALESCE(display_name, name) AS name, name AS handle, color, channel, is_admin AS isAdmin, presence, away_message AS awayMessage, avatar, bio, profile_link AS profileLink FROM users WHERE disabled = 0 ORDER BY name COLLATE NOCASE',
         )
         .all() as Pick<User, 'id' | 'name' | 'channel'>[]
-    ).map((user) => ({ ...user, online: online(user.id) }));
+    ).map((user) => ({
+      ...user,
+      channel: community.visibleLocation(id, user.id, user.channel)
+        ? user.channel
+        : '',
+      online: online(user.id) && !community.blocked(id, user.id),
+      present:
+        online(user.id) && community.visibleLocation(id, user.id, user.channel),
+      role: community.visibleLocation(id, user.id, user.channel)
+        ? community.role(user.id, user.channel)
+        : '',
+    }));
     const me = members.find((member) => member.id === id) ?? null;
     if (!me) return { ...base, me: null, members: [], messages: [] };
-    const columns =
-      'm.id, COALESCE(u.display_name, u.name) AS name, u.name AS handle, u.color, m.user_id AS userId, m.channel, m.recipient, m.text, m.created_at AS createdAt';
+    const columns = community.messageColumns;
     const publicMessages = db
       .prepare(
         `SELECT ${columns} FROM messages m JOIN users u ON u.id = m.user_id WHERE m.channel = ? AND m.recipient IS NULL ORDER BY m.id DESC LIMIT 200`,
@@ -145,7 +171,25 @@ export function createApp(config: Config) {
     const messages = [...publicMessages, ...whispers].sort(
       (a, b) => Number(a.id) - Number(b.id),
     );
-    return { ...base, me, members, messages, voice: voice.roster() };
+    const filtered = messages.filter(
+      (m) =>
+        !db
+          .prepare(
+            'SELECT 1 FROM peer_preferences WHERE user_id=? AND peer_id=? AND (blocked=1 OR muted=1)',
+          )
+          .get(id, String(m.userId)) &&
+        (m.recipient || community.canAccess(id, String(m.channel))),
+    );
+    return {
+      ...base,
+      me,
+      members,
+      messages: filtered,
+      community: community.snapshot(id),
+      voice: voice
+        .roster()
+        .filter((v) => community.visibleLocation(id, v.userId, v.channel)),
+    };
   }
   function event(client: Client, kind: string, value: unknown) {
     if (client.response.destroyed) return;
@@ -157,6 +201,8 @@ export function createApp(config: Config) {
     client.response.write(`event: ${kind}\ndata: ${JSON.stringify(value)}\n\n`);
   }
   function broadcast() {
+    if (closing) return;
+    revision++;
     const snapshots = new Map<string, ReturnType<typeof stateFor>>();
     for (const client of clients) {
       const id = client.session.user.id;
@@ -168,9 +214,15 @@ export function createApp(config: Config) {
     text: string,
     kind: string,
     filter: (client: Client) => boolean,
+    source?: string,
   ) {
     for (const client of clients)
-      if (filter(client))
+      if (
+        filter(client) &&
+        community.shouldNotify(client.session.user.id, source, kind) &&
+        (!['join', 'leave'].includes(kind) ||
+          community.channel(currentChannel(client) || '')?.notices)
+      )
         event(client, 'notice', { text, kind, createdAt: Date.now() });
   }
   const currentChannel = (client: Client) =>
@@ -344,6 +396,15 @@ export function createApp(config: Config) {
               throw error;
             }
           }
+          if (!online(user.id)) {
+            const home = String(
+              community.account(user.id)?.home_channel || 'The Lobby',
+            );
+            db.prepare('UPDATE users SET channel=? WHERE id=?').run(
+              community.canAccess(user.id, home) ? home : 'The Lobby',
+              user.id,
+            );
+          }
           db.prepare('DELETE FROM sessions WHERE expires < ?').run(Date.now());
           const count = Number(
             db
@@ -368,11 +429,54 @@ export function createApp(config: Config) {
           return;
         }
         if (!session) fail(401, 'Connect to the gateway first.');
+        if (pathname === '/api/community' && request.method === 'POST') {
+          const data = await body(request);
+          if (data.action === 'read')
+            rate('read:' + session.user.id, 600, 60000);
+          else rate('community:' + session.user.id, 60, 60000);
+          if (data.action === 'report')
+            rate('report:' + session.user.id, 5, 600000);
+          if (
+            data.action === 'friend-request' ||
+            data.action === 'session-invite'
+          )
+            rate('invite:' + session.user.id, 10, 60000);
+          community.mutate(session.user.id, data);
+          broadcast();
+          json(response, 200, { ok: true });
+          return;
+        }
+        if (
+          (pathname === '/api/history' || pathname === '/api/search') &&
+          request.method === 'GET'
+        ) {
+          const query = new URL(request.url!, 'http://localhost').searchParams;
+          const messages = community.history(session.user.id, {
+            channel: query.get('channel') || undefined,
+            peer: query.get('peer') || undefined,
+            before: Number(query.get('before')) || undefined,
+            after: query.has('after') ? Number(query.get('after')) : undefined,
+            query:
+              pathname === '/api/search'
+                ? query.get('q') || undefined
+                : undefined,
+          });
+          json(response, 200, { messages });
+          return;
+        }
         if (pathname.startsWith('/api/admin/')) {
           if (!session.user.is_admin)
             fail(403, 'Administrator access required.');
           if (pathname === '/api/admin/state' && request.method === 'GET') {
             json(response, 200, {
+              reports: db
+                .prepare(
+                  'SELECT r.*,m.text AS messageText,u.name AS reportedHandle FROM reports r JOIN messages m ON m.id=r.message_id JOIN users u ON u.id=m.user_id ORDER BY r.id DESC LIMIT 100',
+                )
+                .all(),
+              audit: db
+                .prepare('SELECT * FROM admin_audit ORDER BY id DESC LIMIT 100')
+                .all(),
               users: db
                 .prepare(
                   'SELECT id, name AS handle, COALESCE(display_name,name) AS name, is_admin AS isAdmin, disabled FROM users ORDER BY name COLLATE NOCASE',
@@ -512,6 +616,7 @@ export function createApp(config: Config) {
           return;
         }
         if (pathname.startsWith('/api/voice/')) {
+          community.requireAccess(session.user.id, session.user.channel);
           rate(`voice:${session.user.id}`, 400, 60_000);
           await voice.handle(pathname, request, response, {
             ...session,
@@ -547,12 +652,14 @@ export function createApp(config: Config) {
           clients.add(client);
           response.on('close', () => {
             clients.delete(client);
+            if (closing) return;
             if (!online(session.user.id)) {
               const channel = currentChannel(client);
               notice(
                 `${session.user.name} has left the channel.`,
                 'leave',
                 (other) => currentChannel(other) === channel,
+                session.user.id,
               );
             }
             broadcast();
@@ -560,11 +667,27 @@ export function createApp(config: Config) {
           broadcast();
           if (!wasOnline)
             notice(
+              session.user.name + ' is online.',
+              'friend-online',
+              (other) =>
+                community.friends(other.session.user.id, session.user.id) &&
+                Boolean(
+                  db
+                    .prepare(
+                      'SELECT notify FROM peer_preferences WHERE user_id=? AND peer_id=?',
+                    )
+                    .get(other.session.user.id, session.user.id)?.notify,
+                ),
+              session.user.id,
+            );
+          if (!wasOnline)
+            notice(
               `${session.user.name} has joined the channel.`,
               'join',
               (other) =>
                 other !== client &&
                 currentChannel(other) === session.user.channel,
+              session.user.id,
             );
           return;
         }
@@ -584,40 +707,28 @@ export function createApp(config: Config) {
           rate(`channel:${session.user.id}`, 15, 60_000);
           const data = await body(request);
           const name = typeof data.name === 'string' ? data.name.trim() : '';
-          if (!/^[A-Za-z0-9 _-]{2,32}$/.test(name))
-            fail(
-              400,
-              'Use 2–32 letters, numbers, spaces, underscores, or hyphens.',
-            );
-          let target = db
-            .prepare('SELECT name, archived FROM channels WHERE name = ?')
-            .get(name) as { name: string; archived?: number } | undefined;
-          if (target?.archived)
-            fail(409, 'This channel was removed by an administrator.');
-          if (!target) {
-            if (
-              Number(
-                db.prepare('SELECT COUNT(*) AS count FROM channels').get()!
-                  .count,
-              ) >= 32
-            )
-              fail(409, 'This gateway has reached its 32-channel limit.');
-            db.prepare('INSERT INTO channels(name) VALUES (?)').run(name);
-            target = { name };
-          }
+          const target = {
+            name: community.join(
+              session.user.id,
+              name,
+              data.visibility,
+              data.existingOnly === true,
+            ),
+          };
           if (session.user.channel !== target.name)
             voice.removeUser(session.user.id);
           db.prepare('UPDATE users SET channel = ? WHERE id = ?').run(
             target.name,
             session.user.id,
           );
-          if (session.user.channel !== target.name) {
+          if (session.user.channel !== target.name && online(session.user.id)) {
             notice(
               `${session.user.name} has left the channel.`,
               'leave',
               (client) =>
                 client.session.user.id !== session.user.id &&
                 currentChannel(client) === session.user.channel,
+              session.user.id,
             );
             notice(
               `${session.user.name} has joined the channel.`,
@@ -625,6 +736,7 @@ export function createApp(config: Config) {
               (client) =>
                 client.session.user.id !== session.user.id &&
                 currentChannel(client) === target.name,
+              session.user.id,
             );
           }
           json(response, 200, { ok: true });
@@ -645,19 +757,69 @@ export function createApp(config: Config) {
             recipient !== null &&
             (typeof recipient !== 'string' ||
               recipient === session.user.id ||
-              !db.prepare('SELECT id FROM users WHERE id = ?').get(recipient))
+              !db
+                .prepare('SELECT id FROM users WHERE id = ? AND disabled=0')
+                .get(recipient))
           )
             fail(400, 'Choose another member to whisper to.');
+          const fresh = community.account(session.user.id)!;
+          if (
+            !recipient &&
+            (fresh.channel !== session.user.channel ||
+              (data.channel !== undefined && data.channel !== fresh.channel))
+          )
+            fail(
+              409,
+              'Your channel changed. Review the destination before sending again.',
+            );
+          if (recipient) community.allowDM(session.user.id, String(recipient));
+          else community.requireAccess(session.user.id, String(fresh.channel));
+          const nonce =
+            typeof data.nonce === 'string' &&
+            /^[a-zA-Z0-9-]{16,80}$/.test(data.nonce)
+              ? data.nonce
+              : null;
+          if (data.nonce !== undefined && !nonce)
+            fail(400, 'Invalid message identifier.');
+          if (nonce) {
+            const prior = db
+              .prepare(
+                'SELECT id,text,recipient,kind FROM messages WHERE user_id=? AND nonce=?',
+              )
+              .get(session.user.id, nonce);
+            if (prior) {
+              if (
+                prior.text !== text ||
+                prior.recipient !== recipient ||
+                prior.kind !== (data.kind === 'action' ? 'action' : 'text')
+              )
+                fail(
+                  409,
+                  'Message identifier already used for different content.',
+                );
+              json(response, 200, { id: Number(prior.id) });
+              return;
+            }
+          }
+          if (
+            data.kind !== undefined &&
+            data.kind !== 'text' &&
+            data.kind !== 'action'
+          )
+            fail(400, 'Choose text or action message type.');
+          const kind = data.kind === 'action' ? 'action' : 'text';
           const result = db
             .prepare(
-              'INSERT INTO messages(user_id,channel,recipient,text,created_at) VALUES (?,?,?,?,?)',
+              'INSERT INTO messages(user_id,channel,recipient,text,created_at,kind,nonce) VALUES (?,?,?,?,?,?,?)',
             )
             .run(
               session.user.id,
-              session.user.channel,
+              String(fresh.channel),
               recipient as string | null,
               text,
               Date.now(),
+              kind,
+              nonce,
             );
           json(response, 201, { id: Number(result.lastInsertRowid) });
           broadcast();
@@ -665,7 +827,13 @@ export function createApp(config: Config) {
             notice(
               `${session.user.name} sent you a whisper. Open Friends to reply.`,
               'message',
-              (client) => client.session.user.id === recipient,
+              (client) =>
+                client.session.user.id === recipient &&
+                community.shouldNotify(
+                  String(recipient),
+                  session.user.id,
+                  'message',
+                ),
             );
           return;
         }
@@ -737,6 +905,7 @@ export function createApp(config: Config) {
   server.headersTimeout = 10_000;
   server.maxConnections = 300;
   const heartbeat = setInterval(() => {
+    if (community.expire()) broadcast();
     for (const client of clients) {
       if (
         client.session.expires <= Date.now() ||
@@ -753,6 +922,7 @@ export function createApp(config: Config) {
   }, 15_000);
   heartbeat.unref();
   async function close() {
+    closing = true;
     clearInterval(heartbeat);
     voice.close();
     for (const client of clients) client.response.destroy();

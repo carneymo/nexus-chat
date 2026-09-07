@@ -32,15 +32,30 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  FriendsPanel,
+  SessionInvites,
+  SocialSettings,
+  ChannelControls,
+  SessionsPanel,
+  type CommunityState,
+} from '@/components/community-panel';
 import { AdminPanel } from '@/components/admin-panel';
 import { VoicePanel } from '@/components/voice-panel';
 import type { VoiceMember } from '@/lib/voice-client';
+import { mergeMessages, messageCursor } from '@/lib/message-state';
 import { messageLinks } from '@/lib/message-links';
 import { cue } from '@/lib/audio';
 import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
 
 type Member = {
+  presence?: string;
+  awayMessage?: string;
+  avatar?: string;
+  bio?: string;
+  profileLink?: string;
+  role?: string;
   isAdmin?: number;
   handle?: string;
   color?: string;
@@ -50,6 +65,7 @@ type Member = {
   online: boolean;
 };
 type Message = {
+  kind?: string;
   id: number;
   name: string;
   userId: string;
@@ -65,6 +81,9 @@ type ChatEvent = {
   recipient: string | null;
 };
 type State = {
+  revision?: number;
+  generation?: string;
+  community?: CommunityState;
   voice?: VoiceMember[];
   me: Member | null;
   channels: string[];
@@ -73,6 +92,9 @@ type State = {
   serverName: string;
 };
 type Panel =
+  | 'report'
+  | 'sessions'
+  | 'search'
   | 'connect'
   | 'channels'
   | 'create'
@@ -134,12 +156,51 @@ export default function Home() {
   });
   const [panel, setPanel] = useState<Panel>(null);
   const [connected, setConnected] = useState(false);
-  const [channel, setChannel] = useState('The Lobby');
+  const channel = state.me?.channel || 'The Lobby';
   const [selectedRecipient, setRecipient] = useState<Member | null>(null);
   const recipient =
     state.members.find((member) => member.id === selectedRecipient?.id) ||
     selectedRecipient;
   const [draft, setDraft] = useState('');
+  const [reportMessage, setReportMessage] = useState<Message | null>(null);
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const pendingSend = useRef<{ key: string; nonce: string } | null>(null);
+  const currentState = useRef(state);
+  useEffect(() => {
+    currentState.current = state;
+  }, [state]);
+  const applyState = useCallback(
+    (next: State) =>
+      setState((previous) => {
+        if (
+          next.generation === previous.generation &&
+          (next.revision || 0) < (previous.revision || 0)
+        )
+          return previous;
+        if (
+          !next.me ||
+          previous.me?.id !== next.me.id ||
+          previous.generation !== next.generation
+        )
+          return next;
+        const denied = new Set(
+          next.community?.preferences
+            .filter((p) => p.blocked || p.muted)
+            .map((p) => p.peer_id) || [],
+        );
+        return {
+          ...next,
+          messages: mergeMessages(
+            previous.messages,
+            next.messages,
+            next.me.id,
+            next.me.channel,
+            denied,
+          ),
+        };
+      }),
+    [],
+  );
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [sound, setSound] = useState(true);
@@ -148,6 +209,19 @@ export default function Home() {
   const [clock, setClock] = useState('--:--');
   const [date, setDate] = useState('TODAY');
   const log = useRef<HTMLDivElement>(null);
+  const followMessages = useRef(true);
+  const scrollContext = useRef('');
+  useEffect(() => {
+    const view = log.current;
+    if (!view) return;
+    const track = () => {
+      followMessages.current =
+        view.scrollHeight - view.scrollTop - view.clientHeight < 80;
+    };
+    view.addEventListener('scroll', track);
+    return () => view.removeEventListener('scroll', track);
+  }, []);
+  const scrollRestore = useRef<{ height: number; top: number } | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const soundRef = useRef(sound);
   useEffect(() => {
@@ -197,10 +271,9 @@ export default function Home() {
 
   const refresh = useCallback(async () => {
     const next = await api<State>('state');
-    setState(next);
-    if (next.me) setChannel(next.me.channel);
+    applyState(next);
     return next;
-  }, []);
+  }, [applyState]);
   useEffect(() => {
     const hydrate = setTimeout(() => {
       setSound(localStorage.getItem('nexus-sound') !== 'off');
@@ -237,18 +310,66 @@ export default function Home() {
   useEffect(() => {
     if (!viewerId) return;
     const stream = new EventSource('/api/events');
+    let opened = false;
+    let reconnectBaseline: State | null = null;
     stream.onopen = () => {
       setConnected(true);
-      void refresh().catch(() => {});
+      const reconnect = opened;
+      opened = true;
+      const prior = reconnectBaseline || currentState.current;
+      reconnectBaseline = null;
+      void (async () => {
+        const next = await refresh();
+        if (!reconnect || next.me?.id !== viewerId) return;
+        const scopes = [
+          { channel: next.me.channel },
+          ...prior.members
+            .filter((m) => m.id !== viewerId)
+            .map((m) => ({ peer: m.id })),
+        ];
+        for (const scope of scopes) {
+          if ('channel' in scope && scope.channel !== prior.me?.channel)
+            continue;
+          let after = messageCursor(prior.messages, viewerId, scope);
+          if (!after && 'peer' in scope)
+            after = Math.max(0, ...prior.messages.map((m) => m.id));
+          while (true) {
+            const query = new URLSearchParams({
+              ...scope,
+              after: String(after),
+            } as Record<string, string>);
+            const page = await api<{ messages: Message[] }>('history?' + query);
+            if (!page.messages.length) break;
+            setState((previous) =>
+              previous.me?.id !== viewerId
+                ? previous
+                : {
+                    ...previous,
+                    messages: mergeMessages(
+                      previous.messages,
+                      page.messages,
+                      viewerId,
+                      previous.me.channel,
+                      previous.community?.preferences
+                        .filter((p) => p.blocked || p.muted)
+                        .map((p) => p.peer_id),
+                    ),
+                  },
+            );
+            after = Math.max(...page.messages.map((m) => m.id));
+            if (page.messages.length < 100) break;
+          }
+        }
+      })().catch(() => {});
     };
     stream.onerror = () => {
+      reconnectBaseline ||= currentState.current;
       setConnected(false);
       void refresh().catch(() => {});
     };
     stream.addEventListener('state', (event) => {
       const update: State = JSON.parse(event.data);
-      setState(update);
-      if (update.me) setChannel(update.me.channel);
+      applyState(update);
     });
     stream.addEventListener('notice', (event) => {
       const data = JSON.parse(event.data);
@@ -267,8 +388,20 @@ export default function Home() {
       stream.close();
       setConnected(false);
     };
-  }, [viewerId, refresh]);
+  }, [viewerId, refresh, applyState]);
   useEffect(() => {
+    if (scrollRestore.current && log.current) {
+      log.current.scrollTop =
+        scrollRestore.current.top +
+        log.current.scrollHeight -
+        scrollRestore.current.height;
+      scrollRestore.current = null;
+      return;
+    }
+    const context = channel + ':' + (recipient?.id || '');
+    const changed = scrollContext.current !== context;
+    scrollContext.current = context;
+    if (!changed && !followMessages.current) return;
     log.current?.scrollTo({
       top: log.current.scrollHeight,
       behavior: 'smooth',
@@ -301,16 +434,21 @@ export default function Home() {
   function open(next: Panel) {
     setMobileMenu(false);
     setError('');
+    setSearchResults([]);
     setPanel(next);
     cue('click', sound);
   }
-  async function join(name: string) {
+  async function join(name: string, visibility?: string) {
     if (!state.me) {
       open('connect');
       return;
     }
     await act(async () => {
-      await api('channel', { name });
+      await api('channel', {
+        name,
+        visibility,
+        existingOnly: visibility === undefined,
+      });
       await refresh();
       setRecipient(null);
       setEvents([]);
@@ -326,14 +464,52 @@ export default function Home() {
     }
     const text = draft.trim();
     if (!text) return;
+    if (text === '/join') {
+      open('channels');
+      setDraft('');
+      return;
+    }
+    if (text === '/w') {
+      open('friends');
+      setDraft('');
+      return;
+    }
+    if (
+      text.startsWith('/') &&
+      !/^\/(?:help|join|w|r|me|away|dnd)(?: |$)/.test(text)
+    ) {
+      addEvent('Unknown command. Use /help to see commands.');
+      return;
+    }
     if (text === '/help') {
-      addEvent('/join channel · /w callsign message · /help');
+      addEvent(
+        '/join channel · /w handle message · /r message · /me action · /away message · /dnd · /help. Options controls presence and privacy; Friends opens whispers.',
+      );
       setDraft('');
       return;
     }
     if (text.startsWith('/join ')) {
       await join(text.slice(6).trim());
       setDraft('');
+      return;
+    }
+    if (text === '/away' || text.startsWith('/away ') || text === '/dnd') {
+      await act(async () => {
+        await api('community', {
+          action: 'presence',
+          presence:
+            text === '/dnd'
+              ? state.me?.presence === 'dnd'
+                ? 'online'
+                : 'dnd'
+              : text === '/away' && state.me?.presence === 'away'
+                ? 'online'
+                : 'away',
+          awayMessage: text.startsWith('/away ') ? text.slice(6) : '',
+        });
+        await refresh();
+        setDraft('');
+      });
       return;
     }
     await act(async () => {
@@ -352,12 +528,82 @@ export default function Home() {
         content = words.join(' ');
         setRecipient(member);
       }
-      await api('messages', { text: content, recipient: to });
+      if (text.startsWith('/r ')) {
+        const last = [...state.messages]
+          .reverse()
+          .find((m) => m.recipient === state.me?.id);
+        if (!last) throw new Error('No direct-message sender to reply to yet.');
+        to = last.userId;
+        content = text.slice(3);
+        setRecipient(state.members.find((m) => m.id === to) || null);
+      }
+      followMessages.current = true;
+      const kind = text.startsWith('/me ') ? 'action' : 'text';
+      if (kind === 'action') content = text.slice(4);
+      const key = JSON.stringify([to || channel, content, kind]);
+      if (pendingSend.current?.key !== key)
+        pendingSend.current = { key, nonce: crypto.randomUUID() };
+      await api('messages', {
+        text: content,
+        recipient: to,
+        channel: to ? undefined : channel,
+        kind,
+        nonce: pendingSend.current.nonce,
+      });
+      pendingSend.current = null;
       setDraft('');
       await refresh();
       input.current?.focus();
     });
   }
+  async function mutate(data: Record<string, unknown>) {
+    setError('');
+    try {
+      await api('community', data);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Request failed.');
+      throw cause;
+    }
+  }
+  function whisper(member: Member) {
+    setRecipient(member);
+    setPanel(null);
+    input.current?.focus();
+  }
+  useEffect(() => {
+    if (!viewerId || !recipient?.id || document.visibilityState !== 'visible')
+      return;
+    const latest = Math.max(
+      0,
+      ...state.messages
+        .filter((m) => m.userId === recipient.id && m.recipient === viewerId)
+        .map((m) => m.id),
+    );
+    if (
+      state.community?.unread.some((u) => u.peer === recipient.id && u.count) &&
+      latest
+    )
+      void api('community', {
+        action: 'read',
+        peer: recipient.id,
+        messageId: latest,
+      }).catch(() => {});
+  }, [viewerId, recipient?.id, state.messages, state.community?.unread]);
+  const sharedLinkApplied = useRef(false);
+  useEffect(() => {
+    if (!viewerId) {
+      sharedLinkApplied.current = false;
+      return;
+    }
+    if (sharedLinkApplied.current) return;
+    sharedLinkApplied.current = true;
+    const name = new URLSearchParams(location.search).get('channel');
+    if (name)
+      void api('channel', { name, existingOnly: true })
+        .then(() => refresh())
+        .catch((cause) => setError(cause.message));
+  }, [viewerId, refresh]);
   const online = state.members.filter((member) => member.online);
   const roster = online.filter((member) => member.channel === channel);
   const messages = state.messages.filter((message) =>
@@ -370,7 +616,11 @@ export default function Home() {
       : !message.recipient && message.channel === channel,
   );
   const timeline = [
-    ...messages.map((message) => ({ kind: 'message' as const, ...message })),
+    ...messages.map((message) => ({
+      ...message,
+      messageKind: message.kind,
+      kind: 'message' as const,
+    })),
     ...events
       .filter((event) => event.recipient === (recipient?.id ?? null))
       .map((event) => ({ kind: 'event' as const, ...event })),
@@ -380,9 +630,8 @@ export default function Home() {
       .filter((person) => person.channel === channel)
       .map((person) => [person.userId, person]),
   );
-  const whisperCount = state.messages.filter(
-    (message) => message.recipient === state.me?.id,
-  ).length;
+  const whisperCount =
+    state.community?.unread.reduce((total, u) => total + u.count, 0) || 0;
 
   return (
     <main
@@ -554,6 +803,35 @@ export default function Home() {
                 </button>
               </div>
             </header>
+            {state.me && (
+              <div className="conversation-tools">
+                <button onClick={() => open('sessions')}>Open sessions</button>
+                <button onClick={() => open('search')}>Search</button>
+                <button
+                  onClick={() => {
+                    const last = [...state.messages]
+                      .reverse()
+                      .find((m) => m.recipient === viewerId);
+                    if (last) {
+                      const person = state.members.find(
+                        (m) => m.id === last.userId,
+                      );
+                      if (person) whisper(person);
+                    }
+                  }}
+                >
+                  Quick reply
+                </button>
+                <button
+                  onClick={() => {
+                    setDraft('/me ');
+                    input.current?.focus();
+                  }}
+                >
+                  Action
+                </button>
+              </div>
+            )}
             <VoicePanel
               key={`${viewerId}-${channel}`}
               channel={channel}
@@ -567,6 +845,56 @@ export default function Home() {
               aria-label="Conversation"
               aria-live="polite"
             >
+              {state.me && (
+                <button
+                  className="history-button"
+                  onClick={() =>
+                    void act(async () => {
+                      const query = new URLSearchParams(
+                        recipient ? { peer: recipient.id } : { channel },
+                      );
+                      query.set(
+                        'before',
+                        String(
+                          Math.min(
+                            ...messages.map((m) => m.id),
+                            Number.MAX_SAFE_INTEGER,
+                          ),
+                        ),
+                      );
+                      const page = await api<{ messages: Message[] }>(
+                        'history?' + query,
+                      );
+                      const view = log.current;
+                      if (view && page.messages.length)
+                        scrollRestore.current = {
+                          height: view.scrollHeight,
+                          top: view.scrollTop,
+                        };
+                      setState((previous) =>
+                        !previous.me
+                          ? previous
+                          : {
+                              ...previous,
+                              messages: mergeMessages(
+                                previous.messages,
+                                page.messages,
+                                previous.me.id,
+                                previous.me.channel,
+                                previous.community?.preferences
+                                  .filter((p) => p.blocked || p.muted)
+                                  .map((p) => p.peer_id),
+                              ),
+                            },
+                      );
+                      if (!page.messages.length)
+                        addEvent('No earlier messages.');
+                    })
+                  }
+                >
+                  Load earlier messages
+                </button>
+              )}
               <div className="channel-intro">
                 <div className="intro-mark">
                   <Radio size={25} strokeWidth={1.25} />
@@ -575,7 +903,7 @@ export default function Home() {
                 <h2>{recipient ? recipient.name : channel}</h2>
                 <span>
                   {recipient
-                    ? 'Only you and this friend can read these whispers.'
+                    ? 'A private conversation between your accounts.'
                     : 'The games change. The crew stays the same.'}
                 </span>
               </div>
@@ -635,7 +963,11 @@ export default function Home() {
                             open('profile');
                           }
                         }}
-                      >{`<${message.name}>`}</button>{' '}
+                      >
+                        {message.messageKind === 'action'
+                          ? `* ${state.members.find((m) => m.id === message.userId)?.name || message.name}`
+                          : `<${state.members.find((m) => m.id === message.userId)?.name || message.name}>`}
+                      </button>{' '}
                       <span>
                         {messageLinks(message.text).map((part, index) =>
                           part.href ? (
@@ -653,6 +985,16 @@ export default function Home() {
                           ),
                         )}
                       </span>
+                      <button
+                        className="report-message"
+                        aria-label="Report message"
+                        onClick={() => {
+                          setReportMessage(message);
+                          open('report');
+                        }}
+                      >
+                        Report
+                      </button>
                     </div>
                   </div>
                 ),
@@ -682,12 +1024,52 @@ export default function Home() {
                 {error}
               </p>
             )}
+            {draft.startsWith('/') && !draft.includes(' ') && (
+              <div
+                className="command-suggestions"
+                aria-label="Command suggestions"
+              >
+                {['/join', '/w', '/r', '/me', '/away', '/dnd', '/help']
+                  .filter((command) => command.startsWith(draft))
+                  .map((command) => (
+                    <button
+                      key={command}
+                      onClick={() => {
+                        setDraft(command + ' ');
+                        input.current?.focus();
+                      }}
+                    >
+                      {command}
+                    </button>
+                  ))}
+              </div>
+            )}
             <form className="composer" onSubmit={send}>
               <span className="prompt">›</span>
               <textarea
                 rows={1}
                 onFocus={() => setMobileMenu(false)}
                 onKeyDown={(event) => {
+                  if (
+                    event.key === 'Tab' &&
+                    draft.startsWith('/') &&
+                    !draft.includes(' ')
+                  ) {
+                    const suggestion = [
+                      '/join',
+                      '/w',
+                      '/r',
+                      '/me',
+                      '/away',
+                      '/dnd',
+                      '/help',
+                    ].find((command) => command.startsWith(draft));
+                    if (suggestion) {
+                      event.preventDefault();
+                      setDraft(suggestion + ' ');
+                      return;
+                    }
+                  }
                   if (
                     event.key === 'Enter' &&
                     !event.shiftKey &&
@@ -753,9 +1135,7 @@ export default function Home() {
                     <button
                       key={member.id}
                       className={`member ${recipient?.id === member.id ? 'selected' : ''}`}
-                      onClick={() =>
-                        member.id !== state.me?.id && setRecipient(member)
-                      }
+                      onClick={() => (setProfileId(member.id), open('profile'))}
                     >
                       <span className="member-avatar">
                         {member.name.slice(0, 2).toUpperCase()}
@@ -766,11 +1146,22 @@ export default function Home() {
                           color: member.color || callsignColor(member.id),
                         }}
                       >
-                        {member.name}
+                        {member.name}{' '}
+                        {member.role === 'owner'
+                          ? ' · Owner'
+                          : member.role === 'moderator'
+                            ? ' · Mod'
+                            : ''}
                         <small>
                           {member.id === state.me?.id
-                            ? 'You · ready to chat'
-                            : 'In the channel'}
+                            ? member.presence === 'online'
+                              ? 'You · ready to chat'
+                              : `You · ${member.presence}`
+                            : member.presence === 'online'
+                              ? 'In the channel'
+                              : member.presence === 'dnd'
+                                ? 'Do Not Disturb'
+                                : `Away${member.awayMessage ? ' · ' + member.awayMessage : ''}`}
                         </small>
                       </span>
                       {voiceByUser.has(member.id) && (
@@ -816,7 +1207,7 @@ export default function Home() {
                 <span>
                   Just you and your people.
                   <br />
-                  Invite-only. Always.
+                  A private gateway for your crew.
                 </span>
               </div>
             </div>
@@ -827,7 +1218,9 @@ export default function Home() {
               <div>
                 <span>Access</span>
                 <b>
-                  <Lock size={11} /> Invite only
+                  <Lock size={11} />{' '}
+                  {state.community?.channels.find((c) => c.name === channel)
+                    ?.visibility || 'public'}
                 </b>
               </div>
               <div>
@@ -871,8 +1264,14 @@ export default function Home() {
           </span>
           <div>
             <span>
-              {online.length} {online.length === 1 ? 'friend' : 'friends'}{' '}
-              online
+              {
+                online.filter((m) =>
+                  state.community?.relationships.some(
+                    (r) => r.peer === m.id && r.accepted,
+                  ),
+                ).length
+              }{' '}
+              friends online
             </span>
             <button
               onClick={() => {
@@ -902,22 +1301,33 @@ export default function Home() {
       >
         <DialogContent className="nexus-dialog">
           <DialogTitle>
-            {panel === 'connect'
-              ? authMode === 'register'
-                ? 'Create account'
-                : 'Welcome back'
-              : panel === 'channels'
-                ? 'Select channel'
-                : panel === 'create'
-                  ? 'Create channel'
-                  : panel === 'friends'
-                    ? 'Your friends'
-                    : panel === 'profile'
-                      ? 'Member profile'
-                      : panel === 'admin'
-                        ? 'Server management'
-                        : 'Terminal options'}
+            {panel === 'report'
+              ? 'Report message'
+              : panel === 'sessions'
+                ? 'Open sessions'
+                : panel === 'search'
+                  ? 'Search conversation'
+                  : panel === 'connect'
+                    ? authMode === 'register'
+                      ? 'Create account'
+                      : 'Welcome back'
+                    : panel === 'channels'
+                      ? 'Select channel'
+                      : panel === 'create'
+                        ? 'Create channel'
+                        : panel === 'friends'
+                          ? 'Your friends'
+                          : panel === 'profile'
+                            ? 'Member profile'
+                            : panel === 'admin'
+                              ? 'Server management'
+                              : 'Terminal options'}
           </DialogTitle>
+          {error && (
+            <p role="alert" className="error-strip">
+              {error}
+            </p>
+          )}
           <DialogDescription>
             {panel === 'connect'
               ? 'One account keeps your identity and history together.'
@@ -1023,8 +1433,99 @@ export default function Home() {
               </button>
             </form>
           )}
+          {panel === 'report' && reportMessage && (
+            <form
+              className="dialog-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const reason = new FormData(e.currentTarget).get('reason');
+                void mutate({
+                  action: 'report',
+                  messageId: reportMessage.id,
+                  reason,
+                })
+                  .then(() => {
+                    setPanel(null);
+                    addEvent('Report sent to the server administrator.');
+                  })
+                  .catch(() => {});
+              }}
+            >
+              <p>
+                This shares the selected message and your reason with the server
+                administrator.
+              </p>
+              <blockquote>{reportMessage.text}</blockquote>
+              <label>
+                Reason
+                <textarea name="reason" required maxLength={500} />
+              </label>
+              <button className="dialog-action">Send report</button>
+            </form>
+          )}
+          {panel === 'sessions' && state.me && state.community && (
+            <SessionsPanel
+              state={state.community}
+              me={state.me}
+              members={state.members}
+              mutate={mutate}
+            />
+          )}
+          {panel === 'search' && (
+            <div className="social-form">
+              <form
+                className="dialog-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const q = new FormData(e.currentTarget).get('q') as string;
+                  void act(async () => {
+                    const query = new URLSearchParams({
+                      ...(recipient ? { peer: recipient.id } : { channel }),
+                      q,
+                    });
+                    setSearchResults(
+                      (await api<{ messages: Message[] }>('search?' + query))
+                        .messages,
+                    );
+                  });
+                }}
+              >
+                <label>
+                  Search this {recipient ? 'conversation' : 'channel'}
+                  <input name="q" required maxLength={100} />
+                </label>
+                <button className="dialog-action">Search</button>
+              </form>
+              {searchResults.map((m) => (
+                <p key={m.id}>
+                  <strong>
+                    {state.members.find((person) => person.id === m.userId)
+                      ?.name || m.name}
+                  </strong>{' '}
+                  · {new Date(m.createdAt).toLocaleString()}
+                  <br />
+                  {m.text}
+                </p>
+              ))}
+            </div>
+          )}
           {panel === 'channels' && (
             <div className="channel-list">
+              <form
+                className="dialog-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void join(
+                    new FormData(e.currentTarget).get('name') as string,
+                  );
+                }}
+              >
+                <label>
+                  Join by name
+                  <input name="name" minLength={2} maxLength={32} required />
+                </label>
+                <button className="dialog-action">Join channel</button>
+              </form>
               {state.channels.map((name) => (
                 <button
                   key={name}
@@ -1040,6 +1541,14 @@ export default function Home() {
                   <ChevronRight size={15} />
                 </button>
               ))}
+              {state.me && state.community && (
+                <ChannelControls
+                  state={state.community}
+                  me={state.me}
+                  members={state.members}
+                  mutate={mutate}
+                />
+              )}
             </div>
           )}
           {panel === 'create' && (
@@ -1048,7 +1557,10 @@ export default function Home() {
               onSubmit={(event) => {
                 event.preventDefault();
                 const fields = new FormData(event.currentTarget);
-                void join(fields.get('name') as string);
+                void join(
+                  fields.get('name') as string,
+                  fields.get('visibility') as string,
+                );
               }}
             >
               <label>
@@ -1061,44 +1573,31 @@ export default function Home() {
                   placeholder="The War Room"
                 />
               </label>
+              <label>
+                Access
+                <select name="visibility">
+                  <option>public</option>
+                  <option>unlisted</option>
+                  <option>invite-only</option>
+                </select>
+              </label>
               <button className="dialog-action" disabled={busy}>
                 Create & join
               </button>
             </form>
           )}
-          {panel === 'friends' && (
-            <div className="channel-list">
-              {state.members
-                .filter((member) => member.id !== state.me?.id)
-                .map((member) => (
-                  <button
-                    key={member.id}
-                    className={
-                      member.online ? 'friend-online' : 'friend-offline'
-                    }
-                    onClick={() => {
-                      setRecipient(member);
-                      setPanel(null);
-                      input.current?.focus();
-                    }}
-                  >
-                    <i className={`led ${member.online ? '' : 'offline'}`} />
-                    <span>{member.name}</span>
-                    <small>
-                      @{member.handle || member.name} ·{' '}
-                      {member.online ? 'Online' : 'Offline'}
-                    </small>
-                    <Lock size={14} />
-                  </button>
-                ))}
-              {state.members.filter((member) => member.id !== state.me?.id)
-                .length === 0 && (
-                <p className="field-help">
-                  Your crew will appear here after they connect. Share your
-                  gateway link and invite code to bring them in.
-                </p>
-              )}
-            </div>
+          {panel === 'friends' && state.me && state.community && (
+            <FriendsPanel
+              state={state.community}
+              me={state.me}
+              members={state.members}
+              mutate={mutate}
+              whisper={whisper}
+              profile={(id) => {
+                setProfileId(id);
+                open('profile');
+              }}
+            />
           )}
           {(panel === 'profile' || panel === 'settings') &&
             (() => {
@@ -1114,7 +1613,22 @@ export default function Home() {
                   >
                     {person.name}
                   </h3>
-                  <p>@{person.handle || person.name}</p>
+                  <p>
+                    {person.avatar} @{person.handle || person.name}{' '}
+                    {person.role && ['owner', 'moderator'].includes(person.role)
+                      ? ' · ' + person.role
+                      : ''}
+                  </p>
+                  <p>{person.bio}</p>
+                  {person.profileLink && (
+                    <a
+                      href={person.profileLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Profile link
+                    </a>
+                  )}
                   {person.id === state.me?.id ? (
                     <form
                       className="dialog-form"
@@ -1188,6 +1702,14 @@ export default function Home() {
                       Whisper to {person.name}
                     </button>
                   )}
+                  {state.me && state.community && person.id !== state.me.id && (
+                    <SessionInvites
+                      state={state.community}
+                      me={state.me}
+                      peer={person}
+                      mutate={mutate}
+                    />
+                  )}
                 </div>
               );
             })()}
@@ -1196,6 +1718,14 @@ export default function Home() {
             <button className="dialog-action" onClick={() => open('admin')}>
               Manage server · Admin
             </button>
+          )}
+          {panel === 'settings' && state.me && state.community && (
+            <SocialSettings
+              state={state.community}
+              me={state.me}
+              members={state.members}
+              mutate={mutate}
+            />
           )}
           {panel === 'settings' && (
             <div className="dialog-form">

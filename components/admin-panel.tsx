@@ -1,6 +1,22 @@
 'use client';
 import { useEffect, useState } from 'react';
 type AdminState = {
+  reports?: {
+    id: number;
+    reporter: string;
+    message_id: number;
+    reason: string;
+    messageText?: string;
+    reportedHandle?: string;
+    resolved: number;
+  }[];
+  audit?: {
+    id: number;
+    actor: string;
+    action: string;
+    target: string;
+    created_at: number;
+  }[];
   users: {
     id: string;
     handle: string;
@@ -119,6 +135,48 @@ export function AdminPanel() {
         <p>Loading server management…</p>
       ) : (
         <>
+          <details>
+            <summary>Reports & moderation log</summary>
+            {state.reports
+              ?.filter((r) => !r.resolved)
+              .map((r) => (
+                <div className="social-card" key={r.id}>
+                  <p>
+                    Report #{r.id} · Message #{r.message_id}
+                  </p>
+                  <p>
+                    @{r.reportedHandle}: {r.messageText}
+                  </p>
+                  <p>{r.reason}</p>
+                  <button
+                    onClick={() => {
+                      void fetch('/api/community', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          action: 'report-resolve',
+                          reportId: r.id,
+                        }),
+                      })
+                        .then(async (response) => {
+                          if (!response.ok)
+                            throw new Error('Unable to resolve report.');
+                          setState(await admin<AdminState>('state'));
+                        })
+                        .catch((cause) => setError(cause.message));
+                    }}
+                  >
+                    Mark resolved
+                  </button>
+                </div>
+              ))}
+            {state.audit?.map((entry) => (
+              <p key={entry.id}>
+                {new Date(entry.created_at).toLocaleString()} · {entry.action} ·{' '}
+                {entry.target}
+              </p>
+            ))}
+          </details>
           <h3>Accounts</h3>
           <div className="admin-list">
             {state.users.map((user) => (

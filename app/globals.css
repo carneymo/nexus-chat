@@ -1892,3 +1892,103 @@ button:hover {
   border: 1px solid #7a7151;
   padding: 8px 12px;
 }
+
+/* Community controls reuse the terminal palette and compact mobile rhythm. */
+.social-form {
+  display: grid;
+  gap: 14px;
+}
+.social-form h3 {
+  color: var(--text-primary, #d4d6b3);
+  margin: 4px 0;
+}
+.social-card {
+  border: 1px solid #585e3f;
+  padding: 12px;
+  background: #10150d;
+}
+.social-card p {
+  margin: 8px 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.social-actions,
+.conversation-tools,
+.command-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.social-actions button,
+.conversation-tools button,
+.command-suggestions button,
+.history-button {
+  border: 1px solid #5a6240;
+  padding: 7px 10px;
+  background: #24291a;
+  color: #d2d6ae;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.conversation-tools {
+  padding: 6px 10px;
+  background: #202519;
+  flex-shrink: 0;
+}
+.command-suggestions {
+  padding: 6px;
+}
+.dialog-form select,
+.dialog-form textarea {
+  width: 100%;
+  background: #0c1209;
+  color: #d6d7ba;
+  border: 1px solid #626849;
+  padding: 9px;
+  font: inherit;
+}
+.dialog-form textarea {
+  min-height: 70px;
+}
+.social-form input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+}
+.social-form a {
+  color: #83d9ef;
+  text-decoration: underline;
+}
+.report-message {
+  font-size: 10px;
+  margin-left: 8px;
+  color: #989e87;
+}
+.social-actions button:focus-visible,
+.conversation-tools button:focus-visible,
+.history-button:focus-visible {
+  outline: 2px solid #d7bd7a;
+  outline-offset: 2px;
+}
+@media (max-width: 800px) {
+  .conversation-tools {
+    gap: 4px;
+    padding: 4px 8px;
+  }
+  .conversation-tools button {
+    padding: 5px 7px;
+    font-size: 11px;
+  }
+  .keyboard-open .conversation-tools {
+    display: none;
+  }
+  .social-card {
+    padding: 10px;
+  }
+}
+.social-card .friend-online {
+  color: #b7d98e;
+}
+.social-card .friend-offline {
+  color: #929887;
+}

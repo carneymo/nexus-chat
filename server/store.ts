@@ -1,3 +1,4 @@
+import { migrateCommunity } from './community-schema.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -61,6 +62,7 @@ export function createStore(path: string) {
   db.exec('PRAGMA user_version=3');
   for (const name of ['The Lobby', 'After Hours', 'Looking for Group'])
     db.prepare('INSERT OR IGNORE INTO channels(name) VALUES (?)').run(name);
+  migrateCommunity(db);
   db.exec('PRAGMA optimize');
   return db;
 }

@@ -100,7 +100,7 @@ void test(
       const aStream = await listen(a.data.id, alice);
       await listen(b.data.id, bob);
       await listen(e.data.id, eve);
-      assert.equal((await request('state', alice)).data.voice.length, 3);
+      assert.equal((await request('state', alice)).data.voice.length, 2);
       assert.equal(
         (await request('voice/mute', bob, { id: a.data.id, muted: true }))
           .status,

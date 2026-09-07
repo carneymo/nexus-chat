@@ -24,6 +24,7 @@ type Dependencies = {
   fail: (status: number, message: string) => never;
   changed: () => void;
   sessionValid: (hash: string) => boolean;
+  authorize: (session: VoiceSession) => void;
 };
 export function createVoice(config: VoiceConfig, deps: Dependencies) {
   const people = new Map<string, Participant>();
@@ -103,6 +104,7 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
   ) {
     if (path === '/api/voice/join' && request.method === 'POST') {
       await deps.body(request);
+      deps.authorize(session);
       if (!config.turnSecret || !config.turnUrls?.length)
         deps.fail(503, 'Voice relay is not configured yet.');
       if ([...people.values()].some((p) => p.userId === session.user.id))
@@ -158,6 +160,7 @@ export function createVoice(config: VoiceConfig, deps: Dependencies) {
     }
     if (request.method !== 'POST') deps.fail(404, 'Unknown voice command.');
     const data = await deps.body(request);
+    deps.authorize(session);
     const person = people.get(typeof data.id === 'string' ? data.id : '');
     if (
       !person ||

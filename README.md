@@ -10,7 +10,7 @@ A small, self-hosted chat app inspired by the original Battle.net lobby: metal p
 - Reconnecting live delivery with a fresh snapshot after interruption.
 - Synthesized join, whisper, and button cues; mute, sound preview, and custom join audio.
 - CRT scanline preference, responsive layout, keyboard controls, and accessible dialogs.
-- `/join channel`, `/w callsign message`, and `/help` commands.
+- `/join`, `/w`, `/r`, `/me`, `/away`, `/dnd`, and `/help`, with command suggestions.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ flowchart LR
   SQLite --> Backup[Consistent backups]
 ```
 
-Browsers send authenticated HTTP requests. One Node process validates and stores messages, then sends each connected member a separately authorized snapshot through Server-Sent Events. A snapshot includes the current channel's latest 200 public messages and the member's latest 200 sent/received whispers. Other members' whispers are never included. SQLite retains older history outside the visible window.
+Browsers send authenticated HTTP requests. One Node process validates and stores messages, then sends each connected member a separately authorized snapshot through Server-Sent Events. A snapshot includes the current channel's latest 200 public messages and the member's latest 200 sent/received whispers. Other members' whispers are never included. SQLite retains older history, available through authorized 100-message cursor pages. Reconnect catchup merges pages by stable message ID.
 
 React/TypeScript is exported to static files with the Vinext/Vite scaffold. The production gateway serves those files and the API from one origin. The backend uses Node's built-in HTTP, crypto, and SQLite modules; the final container needs no installed npm dependencies. In development, Vite proxies `/api` to the local Node process.
 
@@ -43,7 +43,7 @@ In another terminal:
 pnpm dev
 ```
 
-Open **http://127.0.0.1:3000**. Select **Connect**, choose a callsign and a password of at least 10 characters, and use `INVITE_CODE` from your local `.env`. Setup generates a random code without printing it and preserves an existing `.env`. Returning users leave the invite field empty.
+Open **http://127.0.0.1:3000**. Select **Connect**, choose a callsign and a password of at least 10 characters, and use `INVITE_CODE` from your local `.env`. Setup generates a random code without printing it and preserves an existing `.env`. Returning users choose Sign in; no invite code is needed.
 
 To run the exported frontend without Vite, run `pnpm build`, set `APP_ORIGIN=http://127.0.0.1:3001` in `.env`, then run `pnpm start` and open that URL. For the two-process development setup, keep `APP_ORIGIN=http://127.0.0.1:3000`. Use the exact configured origin; `localhost` and `127.0.0.1` are distinct browser origins.
 
@@ -187,7 +187,7 @@ mute, cleanup and microphone lifecycle; they do not replace a real audio test.
 Voice controls also include **Deafen / Undeafen**, which silences incoming voices locally, including newly joined participants. It does not mute your microphone; use **Mute** separately for private conversations. Leaving voice resets Deafen. The right-hand member list marks voice participants and microphone mute status.
 
 ## Accounts and profiles
-Use Create account once with the server invite code. Returning users sign in with their existing account handle and password; no invite is needed. The account handle is permanent. Options lets you change your display name and choose a readable name color. Clicking a chat author opens their profile and stable handle. Messages retain their user ID and display the current profile name, including historical messages. Schema version 2 adds nullable display_name and color columns and preserves existing handles, passwords, sessions, and messages. Administration and recovery tools remain deferred.
+Use Create account once with the server invite code. Returning users sign in with their existing account handle and password; no invite is needed. The account handle is permanent. Options lets you change your display name and choose a readable name color. Clicking a chat author opens their profile and stable handle. Messages retain their user ID and display the current profile name, including historical messages. Schema version 2 adds nullable display_name and color columns and preserves existing handles, passwords, sessions, and messages. Server administration is described below; profile changes never change account identity.
 
 ## Server administration
 
@@ -208,3 +208,7 @@ The Lobby and administrator accounts are protected. Each change requires typing
 the exact handle/channel name and writes an `admin_audit` entry. Schema version 3
 adds these fields without deleting existing accounts or messages. Back up the
 SQLite database before deployment. Permanent data erasure is not included.
+
+## Social expansion (review branch)
+
+See [the feature matrix, validation ledger, and migration/rollback guide](docs/social-expansion.md). This branch adds channel ownership/access controls, actual friendships and privacy settings, message history/search/read markers, reports, and open activities while retaining HTTP, SQLite, SSE, and WebRTC. Production deployment requires the existing deployment approval; it has not been performed. Back up SQLite before applying schema version 4, and restore that backup with the old image if rolling back: the old app does not enforce the new private-channel rules.
