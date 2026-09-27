@@ -464,7 +464,61 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
   }
 });
 
-void test('all present bettors shorten countdown and retain seats across rounds', () => {
+void test('solo bets deal once and departing spectators release the betting window', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-solo-'));
+  const db = createStore(join(dir, 'test.sqlite'));
+  let clock = Date.UTC(2026, 8, 27);
+  const online = new Set(['a']);
+  const game = createBlackjack(db, {
+    now: () => clock,
+    online: (id) => online.has(id),
+    canAccess: () => true,
+    shuffle: () => Array(312).fill(9),
+    fail: (_, message): never => { throw Error(message); },
+  });
+  try {
+    for (const id of ['a', 'b'])
+      db.prepare(
+        "INSERT INTO users(id,name,salt,password_hash,channel) VALUES(?,?,'x','x','Blackjack')",
+      ).run(id, id);
+    const firstBet = {
+      action: 'bet', bet: 20, revision: game.snapshot('a')!.revision,
+      nonce: 'solo-immediate-bet-12345',
+    };
+    game.act('a', firstBet);
+    const dealt = game.snapshot('a')!;
+    assert.equal(dealt.phase, 'playing');
+    assert.equal(dealt.round, 1);
+    assert.equal(dealt.players[0].hands[0].cards.length, 2);
+    assert.equal(dealt.balance, 1180);
+    game.act('a', firstBet);
+    assert.equal(game.snapshot('a')!.revision, dealt.revision);
+    assert.equal(game.snapshot('a')!.balance, 1180);
+    assert.equal(game.tick(), false);
+    game.act('a', {
+      action: 'stand', revision: dealt.revision, nonce: 'solo-immediate-stand-12345',
+    });
+    online.add('b');
+    game.act('a', {
+      action: 'bet', bet: 20, revision: game.snapshot('a')!.revision,
+      nonce: 'spectator-wait-bet-12345',
+    });
+    assert.equal(game.snapshot('a')!.phase, 'betting');
+    assert.equal(game.snapshot('a')!.deadline, clock + 20000);
+    clock += 3000;
+    assert.equal(game.tick(), false);
+    online.delete('b');
+    assert.equal(game.tick(), true);
+    assert.equal(game.snapshot('a')!.phase, 'playing');
+    assert.equal(game.snapshot('a')!.round, 2);
+    assert.equal(game.tick(), false);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+void test('all present bettors deal immediately and retain seats across rounds', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-ready-'));
   const db = createStore(join(dir, 'test.sqlite'));
   let clock = Date.UTC(2026, 8, 8),
@@ -501,9 +555,9 @@ void test('all present bettors shorten countdown and retain seats across rounds'
     );
     assert.equal(game.snapshot('a')!.deadline, clock + 20000);
     bet('b');
-    assert.equal(game.snapshot('a')!.deadline, clock + 3000);
-    clock += 3000;
-    assert.equal(game.tick(), true);
+    assert.notEqual(game.snapshot('a')!.phase, 'betting');
+    assert.equal(game.snapshot('a')!.round, 1);
+    assert.equal(game.tick(), false);
     assert.equal(game.snapshot('a')!.shuffledThisRound, true);
     while (game.snapshot('a')!.phase === 'playing') {
       clock += 31000;
@@ -515,7 +569,8 @@ void test('all present bettors shorten countdown and retain seats across rounds'
       game.snapshot('a')!.players.map((p) => p.id),
       ['a', 'b'],
     );
-    assert.equal(game.snapshot('a')!.deadline, clock + 3000);
+    assert.notEqual(game.snapshot('a')!.phase, 'betting');
+    assert.equal(game.snapshot('a')!.round, 2);
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

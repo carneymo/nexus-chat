@@ -56,7 +56,7 @@ function Cards({ cards }: { cards: (number | null)[] }) {
       {cards.map((card, i) => (
         <span
           key={`${i}-${card}`}
-          style={{ animationDelay: `${i * 450}ms` }}
+          style={{ animationDelay: `${i * 350}ms` }}
           className={
             'bj-card ' +
             (card !== null && [1, 2].includes(Math.floor(card / 13))
@@ -205,7 +205,8 @@ export function BlackjackPanel({
         </div>
         {!table.players.length && (
           <p>
-            The table is open. Place a bet to start a 20-second betting window.
+            The table is open. Cards deal as soon as everyone online here has
+            bet, or after 20 seconds.
           </p>
         )}
       </div>
@@ -274,8 +275,9 @@ export function BlackjackPanel({
           soft 17. Double on your first two cards; double after split allowed.
           Up to four hands. Split aces get one card each; split 21 pays 1:1. No
           insurance or surrender. Bets: 10–500 in steps of 10. Six players.
-          Betting shortens to 3 seconds once everyone online in Blackjack has
-          bet. Returning players keep their seat order. Turns expire after 30
+          Cards deal immediately once everyone online in Blackjack has bet,
+          including when you play alone. Otherwise, betting lasts 20 seconds.
+          Returning players keep their seat order. Turns expire after 30
           seconds and automatically stand.
         </p>
         <p>

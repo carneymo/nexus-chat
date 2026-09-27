@@ -297,7 +297,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
     if (handValue(t.dealer).total === 21) settle(t);
     else advance(t);
   }
-  function shortenBetting(t: Table) {
+  function everyoneHasBet(t: Table) {
     if (t.phase !== 'betting' || !t.players.length || !deps.online)
       return false;
     const present = db
@@ -305,20 +305,16 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       .all(BLACKJACK_CHANNEL)
       .map((u) => String(u.id))
       .filter((id) => deps.online!(id) && allowed(id));
-    if (
-      !present.length ||
-      !present.every((id) => t.players.some((p) => p.id === id))
-    )
-      return false;
-    const deadline = now() + 3000;
-    if (t.deadline <= deadline) return false;
-    t.deadline = deadline;
-    return true;
+    return (
+      present.length > 0 &&
+      present.every((id) => t.players.some((p) => p.id === id))
+    );
   }
   function tick() {
     const t = read();
-    if (shortenBetting(t)) {
+    if (everyoneHasBet(t)) {
       return transaction(() => {
+        deal(t);
         save(t);
         return true;
       });
@@ -380,7 +376,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
           (a, b) => t.seats!.indexOf(a.id) - t.seats!.indexOf(b.id),
         );
         if (!t.deadline) t.deadline = now() + 20000;
-        shortenBetting(t);
+        if (everyoneHasBet(t)) deal(t);
       } else if (data.action === 'cancel') {
         if (t.phase !== 'betting') fail(409, 'Cards already dealt.');
         const p = t.players.find((p) => p.id === id);
