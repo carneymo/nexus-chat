@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { cue } from '@/lib/audio';
-import { blackjackCue } from '@/lib/blackjack-audio';
+import { blackjackCue, afterCardReveals } from '@/lib/blackjack-audio';
 import type { BlackjackLeader } from '@/lib/blackjack-stats';
 import { BlackjackLeaderboard } from './blackjack-leaderboard';
 import {
@@ -56,7 +56,6 @@ function Cards({ cards }: { cards: (number | null)[] }) {
       {cards.map((card, i) => (
         <span
           key={`${i}-${card}`}
-          style={{ animationDelay: `${i * 350}ms` }}
           className={
             'bj-card ' +
             (card !== null && [1, 2].includes(Math.floor(card / 13))
@@ -89,12 +88,32 @@ export function BlackjackPanel({
   sound: boolean;
 }) {
   const previousTable = useRef<BlackjackState | null>(null);
+  const tableElement = useRef<HTMLDivElement>(null);
+  const cancelSound = useRef<(() => void) | null>(null);
+  const soundAccount = useRef(userId);
   const [showStats, setShowStats] = useState(false);
   useEffect(() => {
+    if (soundAccount.current !== userId) {
+      cancelSound.current?.();
+      previousTable.current = null;
+      soundAccount.current = userId;
+    }
+    if (!sound) cancelSound.current?.();
+    // Presence snapshots can replace the table object without a game change.
+    // Keep the pending cue until its cards finish, rather than cancelling it.
+    if (previousTable.current?.revision === table.revision) return;
     const kind = blackjackCue(previousTable.current, table, userId);
     previousTable.current = table;
-    if (kind) cue(kind, sound && document.visibilityState === 'visible');
+    cancelSound.current?.();
+    if (!kind || !sound || document.visibilityState !== 'visible') return;
+    const animations = Array.from(
+      tableElement.current?.querySelectorAll('.bj-card') || [],
+    ).flatMap((card) => card.getAnimations());
+    cancelSound.current = afterCardReveals(animations, () => {
+      cue(kind, document.visibilityState === 'visible');
+    });
   }, [table, userId, sound]);
+  useEffect(() => () => cancelSound.current?.(), []);
   const [bet, setBet] = useState('20'),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -164,7 +183,7 @@ export function BlackjackPanel({
             ? 'Fresh six-deck shoe shuffled and cut this round.'
             : `${table.remainingCards} cards in the shoe · Shuffle below 208 cards, between rounds.`}
       </p>
-      <div className="bj-table" key={table.round}>
+      <div className="bj-table" key={table.round} ref={tableElement}>
         <div className="bj-dealer">
           <strong>Dealer · stands on soft 17</strong>
           <Cards cards={table.dealer} />

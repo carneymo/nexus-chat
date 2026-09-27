@@ -1,4 +1,27 @@
 import type { SoundCue } from './audio';
+
+/** Follow actual card completion, including reduced motion, instead of guessing a delay. */
+export function afterCardReveals(
+  animations: Pick<Animation, 'finished'>[],
+  play: () => void,
+  frames = {
+    request: (callback: FrameRequestCallback) => requestAnimationFrame(callback),
+    cancel: (id: number) => cancelAnimationFrame(id),
+  },
+) {
+  let cancelled = false;
+  let frame: number | undefined;
+  void Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+    if (cancelled) return;
+    frame = frames.request(() => {
+      if (!cancelled) play();
+    });
+  });
+  return () => {
+    cancelled = true;
+    if (frame !== undefined) frames.cancel(frame);
+  };
+}
 type Table = {
   revision: number;
   round: number;

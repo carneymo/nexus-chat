@@ -1,6 +1,65 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blackjackCue } from './blackjack-audio.ts';
+import { blackjackCue, afterCardReveals } from './blackjack-audio.ts';
+
+void test('sound waits for every card reveal and the following frame', async () => {
+  let finishFirst!: (value: Animation) => void;
+  let finishLast!: (value: Animation) => void;
+  const first = new Promise<Animation>((resolve) => { finishFirst = resolve; });
+  const last = new Promise<Animation>((resolve) => { finishLast = resolve; });
+  let nextFrame: FrameRequestCallback | undefined;
+  let played = 0;
+  afterCardReveals([{ finished: first }, { finished: last }], () => played++, {
+    request: (callback) => { nextFrame = callback; return 1; },
+    cancel: () => {},
+  });
+  finishFirst({} as Animation);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(nextFrame, undefined);
+  assert.equal(played, 0);
+  finishLast({} as Animation);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(played, 0);
+  const revealFrame = nextFrame as FrameRequestCallback | undefined;
+  assert.ok(revealFrame);
+  revealFrame(0);
+  assert.equal(played, 1);
+});
+
+void test('reduced motion needs no artificial delay and pending sounds can be cancelled', async () => {
+  let nextFrame: FrameRequestCallback | undefined;
+  let cancelledFrame: number | undefined;
+  let played = 0;
+  const frames = {
+    request: (callback: FrameRequestCallback) => { nextFrame = callback; return 7; },
+    cancel: (id: number) => { cancelledFrame = id; },
+  };
+  const cancel = afterCardReveals([], () => played++, frames);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(nextFrame);
+  cancel();
+  assert.equal(cancelledFrame, 7);
+  nextFrame(0);
+  assert.equal(played, 0);
+  afterCardReveals([], () => played++, frames);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  nextFrame(0);
+  assert.equal(played, 1);
+});
+
+void test('superseded or unmounted transitions never play a late result', async () => {
+  let finish!: (value: Animation) => void;
+  const finished = new Promise<Animation>((resolve) => { finish = resolve; });
+  let scheduled = false;
+  const cancel = afterCardReveals([{ finished }], () => assert.fail('stale sound'), {
+    request: () => { scheduled = true; return 1; },
+    cancel: () => {},
+  });
+  cancel();
+  finish({} as Animation);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(scheduled, false);
+});
 const table = (revision: number, phase = 'playing', returned?: number) => ({
   revision,
   round: 1,
