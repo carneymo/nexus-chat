@@ -156,7 +156,7 @@ export function createApp(config: Config) {
   });
   const push = createPush(db, { canAccess: community.canAccess, shouldNotify: community.shouldNotify, fail }, config.pushSender);
   function stateFor(id?: string) {
-    const channelRows = community.channelList(id);
+    const channelRows = id ? community.channelList(id) : [];
     const base = {
       generation,
       revision,

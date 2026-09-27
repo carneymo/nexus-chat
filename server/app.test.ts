@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, type Config } from './app.ts';
 type TestState = {
+  channels: string[];
   me: { id: string; name: string; channel: string };
   members: { id: string; online: boolean }[];
   messages: { text: string; userId: string }[];
@@ -107,6 +108,7 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
         const publicState = (await request('state')).data;
         assert.deepEqual(publicState.members, []);
         assert.deepEqual(publicState.messages, []);
+        assert.deepEqual(publicState.channels, []);
         alice = await login('Alice');
         bob = await login('Bob');
         eve = await login('Eve');
@@ -137,6 +139,16 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
         const state = (await request('state', bob)).data;
         assert.equal(state.messages[0].text, '<script>alert(1)</script>');
         assert.equal(state.messages[0].userId, aliceId);
+        for (const cookie of ['', 'nexus_session=' + 'a'.repeat(64)]) {
+          const anonymous = await request('state', cookie);
+          assert.equal(anonymous.data.me, null);
+          assert.deepEqual(anonymous.data.messages, []);
+          assert.deepEqual(anonymous.data.members, []);
+          assert.deepEqual(anonymous.data.channels, []);
+          assert.equal(anonymous.response.headers.get('cache-control'), 'no-store');
+          assert.equal((await request('history', cookie)).response.status, 401);
+          assert.equal((await request('events', cookie)).response.status, 401);
+        }
       },
     );
     await t.test(
@@ -284,6 +296,11 @@ void test('gateway integration: authentication, delivery, privacy, and persisten
     );
     await t.test('logout and expiration revoke access', async () => {
       assert.equal((await request('logout', bob, {})).response.status, 200);
+      const signedOut = (await request('state', bob)).data;
+      assert.equal(signedOut.me, null);
+      assert.deepEqual(signedOut.messages, []);
+      assert.deepEqual(signedOut.members, []);
+      assert.deepEqual(signedOut.channels, []);
       assert.equal(
         (await request('messages', bob, { text: 'should fail' })).response
           .status,

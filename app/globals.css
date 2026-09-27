@@ -2918,3 +2918,27 @@ button:hover {
 .phone-notifications label { display: flex; gap: 10px; align-items: center; min-height: 44px; }
 .phone-notifications input { width: auto; }
 .phone-notifications p, .voice-mobile-note { font-size: 14px; line-height: 1.5; }
+
+/* Signed-out clients render only the authentication screen, never the chat shell. */
+.station.auth-gateway {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  height: auto;
+  padding: 24px 16px;
+  overflow: auto;
+}
+.auth-gateway .auth-card {
+  position: static;
+  width: min(100%, 440px);
+  max-height: none;
+  transform: none;
+  padding: 24px;
+}
+.auth-card h1 {
+  font-size: 24px;
+  margin: 0 0 12px;
+}
+.auth-card > p {
+  margin-bottom: 20px;
+}

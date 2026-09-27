@@ -150,7 +150,7 @@ function callsignColor(id: string, selected?: string) {
 }
 const initial: State = {
   me: null,
-  channels: ['The Lobby', 'After Hours', 'Looking for Group'],
+  channels: [],
   members: [],
   messages: [],
   serverName: 'Nexus',
@@ -165,6 +165,8 @@ async function api<T = { ok: boolean }>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && path !== 'login' && path !== 'register')
+    window.dispatchEvent(new Event('nexus-session-expired'));
   if (!response.ok)
     throw new Error(
       (data as { error?: string }).error ||
@@ -225,12 +227,21 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const pendingSend = useRef<{ key: string; nonce: string } | null>(null);
   const currentState = useRef(state);
+  const sessionEpoch = useRef(0);
+  const stateRequest = useRef(0);
   useEffect(() => {
     currentState.current = state;
   }, [state]);
   const applyState = useCallback(
     (next: State) =>
       setState((previous) => {
+        // Loss of authentication must clear private data even if the revision is older.
+        if (!next.me)
+          return {
+            ...initial,
+            serverName: next.serverName,
+            registrationOpen: next.registrationOpen,
+          };
         if (
           next.generation === previous.generation &&
           (next.revision || 0) < (previous.revision || 0)
@@ -306,7 +317,7 @@ export default function Home() {
       cancelAnimationFrame(frame);
       view.removeEventListener('scroll', track);
     };
-  }, []);
+  }, [state.me?.id]);
   const input = useRef<HTMLTextAreaElement>(null);
   const soundRef = useRef(sound);
   useEffect(() => {
@@ -354,19 +365,40 @@ export default function Home() {
   }, [sound]);
   useEffect(() => registerDraftTool(setDraft), []);
 
+  const clearSession = useCallback(() => {
+    sessionEpoch.current++;
+    stateRequest.current++;
+    currentState.current = initial;
+    setState(initial);
+    setRecipient(null);
+    setEvents([]);
+    setSearchResults([]);
+    setDraft('');
+    setSelectedImage(null);
+    setSelectedGif(null);
+    setGifApiKey('');
+    setPanel(null);
+    setConnected(false);
+    pendingSend.current = null;
+    phoneCommand('session', { account: '' });
+  }, []);
+  useEffect(() => {
+    window.addEventListener('nexus-session-expired', clearSession);
+    return () =>
+      window.removeEventListener('nexus-session-expired', clearSession);
+  }, [clearSession]);
   const refresh = useCallback(async () => {
+    const epoch = sessionEpoch.current;
+    const request = ++stateRequest.current;
     const next = await api<State>('state');
+    if (epoch !== sessionEpoch.current || request !== stateRequest.current)
+      throw new Error('A newer session update replaced this request.');
+    if (!next.me && currentState.current.me) clearSession();
     applyState(next);
     return next;
-  }, [applyState]);
+  }, [applyState, clearSession]);
   useEffect(() => {
     const hydrate = setTimeout(() => {
-      const invite = /^#invite=([a-f0-9]{64})$/.exec(window.location.hash)?.[1];
-      if (invite) {
-        setInviteToken(invite);
-        setAuthMode('register');
-        setPanel('connect');
-      }
       setSound(localStorage.getItem('nexus-sound') !== 'off');
       setScanlines(localStorage.getItem('nexus-scanlines') !== 'off');
     }, 0);
@@ -469,6 +501,12 @@ export default function Home() {
       const target = parseConversationLink(window.location.hash);
       if (!target) return;
       if (target.kind === 'invite') {
+        if (viewerId) {
+          history.replaceState(null, '', location.pathname + location.search);
+          setInviteToken('');
+          setPanel((current) => (current === 'connect' ? null : current));
+          return;
+        }
         setInviteToken(target.value);
         setAuthMode('register');
         setPanel('connect');
@@ -516,6 +554,7 @@ export default function Home() {
   }, [viewerId, refresh]);
   useEffect(() => {
     if (!viewerId || phoneBackground) return;
+    const epoch = sessionEpoch.current;
     const stream = new EventSource('/api/events');
     let opened = Boolean(mobileBaseline.current);
     let reconnectBaseline: State | null = mobileBaseline.current;
@@ -577,10 +616,12 @@ export default function Home() {
       void refresh().catch(() => {});
     };
     stream.addEventListener('state', (event) => {
+      if (disposed || epoch !== sessionEpoch.current) return;
       const update: State = JSON.parse(event.data);
       applyState(update);
     });
     stream.addEventListener('notice', (event) => {
+      if (disposed || epoch !== sessionEpoch.current) return;
       const data = JSON.parse(event.data);
       setEvents((previous) => [
         ...previous.slice(-19),
@@ -936,6 +977,149 @@ export default function Home() {
   const whisperCount =
     state.community?.unread.reduce((total, u) => total + u.count, 0) || 0;
 
+  async function saveProfile(event: React.SyntheticEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    await act(async () => {
+      await api('profile', Object.fromEntries(fields));
+      await refresh();
+      setPanel(null);
+    });
+  }
+
+  const authForm = (
+    <form
+      className="dialog-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const fields = new FormData(event.currentTarget);
+        void act(async () => {
+          await api(authMode, {
+            ...Object.fromEntries(fields),
+            mode: authMode,
+            inviteToken:
+              authMode === 'register' ? inviteToken || undefined : undefined,
+          });
+          await refresh();
+          if (inviteToken) {
+            setInviteToken('');
+            window.history.replaceState(
+              null,
+              '',
+              window.location.pathname + window.location.search,
+            );
+          }
+          setPanel(null);
+          cue('join', sound);
+        });
+      }}
+    >
+      <div className="auth-mode">
+        <button
+          type="button"
+          aria-pressed={authMode === 'login'}
+          onClick={() => {
+            setAuthMode('login');
+            setError('');
+          }}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          aria-pressed={authMode === 'register'}
+          onClick={() => {
+            setAuthMode('register');
+            setError('');
+          }}
+        >
+          Create account
+        </button>
+      </div>
+      <label>
+        Account handle
+        <input
+          name="name"
+          required
+          minLength={2}
+          maxLength={20}
+          pattern="[A-Za-z0-9_-]+"
+          placeholder="e.g. Raynor"
+          autoComplete="username"
+        />
+      </label>
+      <label>
+        Password
+        <input
+          name="password"
+          type="password"
+          minLength={10}
+          maxLength={128}
+          required
+          autoComplete={
+            authMode === 'register' ? 'new-password' : 'current-password'
+          }
+          placeholder="At least 10 characters"
+        />
+      </label>
+      {authMode === 'register' && inviteToken && (
+        <p className="field-help">
+          You’re invited. Create your account to join—no code needed.
+        </p>
+      )}
+      {authMode === 'register' && !inviteToken && (
+        <p className="field-help">
+          Open a single-use invitation link from the server owner to create an
+          account.
+        </p>
+      )}
+      {authMode === 'register' && !state.registrationOpen && (
+        <p className="field-help">
+          Registration is currently closed. Existing members can still sign in.
+        </p>
+      )}
+      <p className="field-help">
+        {authMode === 'register'
+          ? 'Your account handle stays permanent. You can change your display name later.'
+          : 'Use your existing account. Your session stays signed in for 30 days.'}
+      </p>
+      <button
+        className="dialog-action"
+        disabled={
+          busy ||
+          (authMode === 'register' && (!inviteToken || !state.registrationOpen))
+        }
+      >
+        {busy
+          ? 'Connecting…'
+          : authMode === 'register'
+            ? 'Create account'
+            : 'Sign in'}
+      </button>
+    </form>
+  );
+  if (!state.me) {
+    return (
+      <main className="station auth-gateway">
+        <section
+          className="nexus-dialog auth-card"
+          aria-labelledby="auth-title"
+        >
+          <h1 id="auth-title">
+            {authMode === 'register' ? 'Create account' : 'Sign in to Nexus'}
+          </h1>
+          <p>Sign in to access your channels, messages and friends.</p>
+          {error && (
+            <p role="alert" className="error-strip">
+              {error}
+            </p>
+          )}
+          {authForm}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main
       className={`station chat-layout ${chatFocus ? 'chat-focus' : ''} roster-open ${scanlines ? 'crt-on' : ''} ${mobileMenu ? 'mobile-menu-open' : ''} ${viewport.keyboard ? 'keyboard-open' : ''} ${state.me ? 'is-signed-in' : ''}`}
@@ -1042,11 +1226,7 @@ export default function Home() {
                           /* Logout still completes if device storage is unavailable. */
                         }
                       }
-                      pendingSend.current = null;
-                      setDraft('');
-                      setState(initial);
-                      setRecipient(null);
-                      setEvents([]);
+                      clearSession();
                     })
                   : open('connect')
               }
@@ -1810,123 +1990,7 @@ export default function Home() {
                     ? 'Select a friend to open a private whisper.'
                     : 'Tune your corner of the network.'}
           </DialogDescription>
-          {panel === 'connect' && (
-            <form
-              className="dialog-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const fields = new FormData(event.currentTarget);
-                void act(async () => {
-                  await api(authMode, {
-                    ...Object.fromEntries(fields),
-                    mode: authMode,
-                    inviteToken:
-                      authMode === 'register'
-                        ? inviteToken || undefined
-                        : undefined,
-                  });
-                  await refresh();
-                  if (inviteToken) {
-                    setInviteToken('');
-                    window.history.replaceState(
-                      null,
-                      '',
-                      window.location.pathname + window.location.search,
-                    );
-                  }
-                  setPanel(null);
-                  cue('join', sound);
-                });
-              }}
-            >
-              <div className="auth-mode">
-                <button
-                  type="button"
-                  aria-pressed={authMode === 'login'}
-                  onClick={() => {
-                    setAuthMode('login');
-                    setError('');
-                  }}
-                >
-                  Sign in
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={authMode === 'register'}
-                  onClick={() => {
-                    setAuthMode('register');
-                    setError('');
-                  }}
-                >
-                  Create account
-                </button>
-              </div>
-              <label>
-                Account handle
-                <input
-                  name="name"
-                  required
-                  minLength={2}
-                  maxLength={20}
-                  pattern="[A-Za-z0-9_-]+"
-                  placeholder="e.g. Raynor"
-                  autoComplete="username"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  name="password"
-                  type="password"
-                  minLength={10}
-                  maxLength={128}
-                  required
-                  autoComplete={
-                    authMode === 'register'
-                      ? 'new-password'
-                      : 'current-password'
-                  }
-                  placeholder="At least 10 characters"
-                />
-              </label>
-              {authMode === 'register' && inviteToken && (
-                <p className="field-help">
-                  You’re invited. Create your account to join—no code needed.
-                </p>
-              )}
-              {authMode === 'register' && !inviteToken && (
-                <p className="field-help">
-                  Open a single-use invitation link from the server owner to
-                  create an account.
-                </p>
-              )}
-              {authMode === 'register' && !state.registrationOpen && (
-                <p className="field-help">
-                  Registration is currently closed. Existing members can still
-                  sign in.
-                </p>
-              )}
-              <p className="field-help">
-                {authMode === 'register'
-                  ? 'Your account handle stays permanent. You can change your display name later.'
-                  : 'Use your existing account. Your session stays signed in for 30 days.'}
-              </p>
-              <button
-                className="dialog-action"
-                disabled={
-                  busy ||
-                  (authMode === 'register' &&
-                    (!inviteToken || !state.registrationOpen))
-                }
-              >
-                {busy
-                  ? 'Connecting…'
-                  : authMode === 'register'
-                    ? 'Create account'
-                    : 'Sign in'}
-              </button>
-            </form>
-          )}
+          {panel === 'connect' && authForm}
           {panel === 'search' && (
             <div className="social-form">
               <form
@@ -2090,15 +2154,7 @@ export default function Home() {
                   {person.id === state.me?.id ? (
                     <form
                       className="dialog-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const fields = new FormData(event.currentTarget);
-                        void act(async () => {
-                          await api('profile', Object.fromEntries(fields));
-                          await refresh();
-                          setPanel(null);
-                        });
-                      }}
+                      onSubmit={saveProfile}
                     >
                       <label>
                         Display name
