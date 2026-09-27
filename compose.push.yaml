@@ -1,0 +1,7 @@
+# Optional overlay: docker compose -f compose.yaml -f compose.push.yaml up -d --build
+services:
+  gateway:
+    environment:
+      FIREBASE_SERVICE_ACCOUNT_FILE: /run/secrets/nexus-firebase.json
+    volumes:
+      - ${FIREBASE_SERVICE_ACCOUNT_FILE:?Set the host path to the service-account JSON}:/run/secrets/nexus-firebase.json:ro

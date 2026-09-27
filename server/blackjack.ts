@@ -69,6 +69,8 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
  CREATE TABLE IF NOT EXISTS blackjack_ledger(id INTEGER PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),amount INTEGER NOT NULL,reason TEXT NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS blackjack_table(id INTEGER PRIMARY KEY CHECK(id=1),state TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS blackjack_actions(nonce TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),created_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS blackjack_recent_hands(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,result TEXT NOT NULL CHECK(result IN ('win','push','loss')));
+ CREATE INDEX IF NOT EXISTS blackjack_recent_user ON blackjack_recent_hands(user_id,id);
  CREATE TABLE IF NOT EXISTS blackjack_stats(user_id TEXT PRIMARY KEY REFERENCES users(id),stats TEXT NOT NULL);`);
   function stats(id: string): BlackjackStats {
     const row = db
@@ -223,6 +225,15 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
           returned = h.bet;
           result = 'Push';
         }
+        db.prepare(
+          'INSERT INTO blackjack_recent_hands(user_id,result) VALUES(?,?)',
+        ).run(
+          p.id,
+          returned > h.bet ? 'win' : returned === h.bet ? 'push' : 'loss',
+        );
+        db.prepare(
+          'DELETE FROM blackjack_recent_hands WHERE user_id=? AND id NOT IN (SELECT id FROM blackjack_recent_hands WHERE user_id=? ORDER BY id DESC LIMIT 5)',
+        ).run(p.id, p.id);
         h.done = true;
         h.result = result;
         h.returned = returned;
@@ -493,6 +504,12 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
                   .find((p) => p.id === w.user_id)
                   ?.hands.reduce((sum, h) => sum + h.bet, 0) || 0),
           stats: stats(String(w.user_id)),
+          recentHands: db
+            .prepare(
+              'SELECT result FROM blackjack_recent_hands WHERE user_id=? ORDER BY id DESC LIMIT 5',
+            )
+            .all(w.user_id)
+            .map((row) => String(row.result) as 'win' | 'push' | 'loss'),
         }))
         .sort((a, b) => b.credits - a.credits || a.id.localeCompare(b.id)),
       serverNow: now(),

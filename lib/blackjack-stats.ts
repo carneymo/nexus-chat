@@ -33,4 +33,5 @@ export type BlackjackLeader = {
   name: string;
   credits: number;
   stats: BlackjackStats;
+  recentHands?: ('win' | 'push' | 'loss')[];
 };

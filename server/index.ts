@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { createApp } from './app.ts';
+import { createFcmSender } from './fcm.ts';
 
 const production = process.env.NODE_ENV === 'production';
 const origin = process.env.APP_ORIGIN || 'http://127.0.0.1:3000';
@@ -19,6 +20,7 @@ const app = createApp({
   secureCookies: production,
   serverName: process.env.SERVER_NAME || 'Nexus',
   log: true,
+  pushSender: createFcmSender(process.env.FIREBASE_SERVICE_ACCOUNT_FILE),
   giphyApiKey: process.env.GIPHY_API_KEY,
   turnUrls: process.env.TURN_URLS?.split(',')
     .map((url) => url.trim())

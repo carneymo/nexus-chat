@@ -94,6 +94,7 @@ void test('stats persist exactly once, respect access, and rank total credits fa
     assert.equal(mine().stats.hands, 4);
     assert.equal(mine().stats.splits, 1);
     assert.equal(mine().stats.pushes, 3);
+    assert.deepEqual(mine().recentHands, ['push', 'push', 'push', 'win']);
     clock += 86400000; //Monday: same grants for offline b and active a
     assert.equal(
       game.snapshot('a')!.leaderboard.find((p) => p.id === 'b')!.credits,
@@ -258,6 +259,9 @@ void test('blackjack ledger, rules, hidden cards and restart persistence', () =>
     game.tick();
     db.prepare("UPDATE users SET channel='Blackjack' WHERE id='alice'").run();
     assert.equal(game.snapshot('alice')!.balance, 2770);
+    const recent = game.snapshot('alice')!.leaderboard.find(p => p.id === 'alice')!.recentHands;
+    assert.equal(recent.length, 5);
+    assert.equal(recent[0], 'win');
   } finally {
     db.close();
     rmSync(dir, { recursive: true, force: true });

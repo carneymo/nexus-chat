@@ -56,6 +56,13 @@ import { messageLinks } from '@/lib/message-links';
 import { cue } from '@/lib/audio';
 import { LegacyScrollArea } from '@/components/legacy-scroll-area';
 import { registerDraftTool } from '@/lib/webmcp';
+import {
+  isAndroidApp,
+  parseConversationLink,
+  phoneCommand,
+} from '@/lib/mobile';
+import { PhoneNotifications } from '@/components/phone-notifications';
+import { mobileSendIntent, acknowledgeMobileSend } from '@/lib/mobile-send';
 
 type Member = {
   presence?: string;
@@ -392,11 +399,128 @@ export default function Home() {
     };
   }, [refresh]);
   const viewerId = state.me?.id;
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  const [phoneBackground, setPhoneBackground] = useState(false);
+  const mobileBaseline = useRef<State | null>(null);
   useEffect(() => {
-    if (!viewerId) return;
+    if (!isAndroidApp()) return;
+    const background = () => {
+      mobileBaseline.current = currentState.current;
+      setPhoneBackground(true);
+    };
+    const resume = () => {
+      setPhoneBackground(false);
+      setStreamEpoch((value) => value + 1);
+      void refresh().catch(() => {});
+    };
+    window.addEventListener('nexus-background', background);
+    window.addEventListener('nexus-resume', resume);
+    return () => {
+      window.removeEventListener('nexus-background', background);
+      window.removeEventListener('nexus-resume', resume);
+    };
+  }, [refresh]);
+  const savedDraftScope = useRef('');
+  const draftScope = viewerId
+    ? `nexus-draft:${viewerId}:${recipient?.id ? 'peer:' + recipient.id : 'channel:' + channel}`
+    : '';
+  useEffect(() => {
+    if (!isAndroidApp()) return;
+    try {
+      if (savedDraftScope.current !== draftScope) {
+        savedDraftScope.current = draftScope;
+        const saved = draftScope
+          ? (localStorage.getItem(draftScope) || '').slice(0, 2000)
+          : '';
+        queueMicrotask(() => setDraft(saved));
+        return;
+      }
+      if (draftScope) {
+        if (draft) localStorage.setItem(draftScope, draft);
+        else localStorage.removeItem(draftScope);
+      }
+    } catch {
+      /* A storage failure must never block chat. */
+    }
+  }, [draftScope, draft]);
+  useEffect(() => {
+    const back = (event: Event) => {
+      if (panel) {
+        setPanel(null);
+        event.preventDefault();
+      } else if (gifOpen) {
+        setGifOpen(false);
+        event.preventDefault();
+      } else if (mobileMenu) {
+        setMobileMenu(false);
+        event.preventDefault();
+      } else if (selectedRecipient) {
+        setRecipient(null);
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('nexus-back', back);
+    return () => window.removeEventListener('nexus-back', back);
+  }, [panel, gifOpen, mobileMenu, selectedRecipient]);
+  const linkBusy = useRef(false);
+  useEffect(() => {
+    const follow = () => {
+      if (linkBusy.current) return;
+      const target = parseConversationLink(window.location.hash);
+      if (!target) return;
+      if (target.kind === 'invite') {
+        setInviteToken(target.value);
+        setAuthMode('register');
+        setPanel('connect');
+        return;
+      }
+      if (!viewerId) return;
+      history.replaceState(null, '', location.pathname + location.search);
+      if (target.account && target.account !== viewerId) {
+        setError('That notification belongs to a different account.');
+        return;
+      }
+      linkBusy.current = true;
+      void (async () => {
+        const fresh = await refresh();
+        if (fresh.me?.id !== viewerId) return;
+        if (target.kind === 'peer') {
+          const peer = fresh.members.find(
+            (member) => member.id === target.value && member.id !== viewerId,
+          );
+          if (
+            !peer ||
+            fresh.community?.preferences.some(
+              (p) => p.peer_id === peer.id && (p.blocked || p.muted),
+            )
+          )
+            throw new Error('That conversation is unavailable.');
+          setRecipient(peer);
+        } else {
+          await api('channel', { name: target.value, existingOnly: true });
+          await refresh();
+          setRecipient(null);
+        }
+        setPanel(null);
+        setMobileMenu(false);
+        setMobileTable(false);
+      })()
+        .catch((error: Error) => setError(error.message))
+        .finally(() => {
+          linkBusy.current = false;
+        });
+    };
+    follow();
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, [viewerId, refresh]);
+  useEffect(() => {
+    if (!viewerId || phoneBackground) return;
     const stream = new EventSource('/api/events');
-    let opened = false;
-    let reconnectBaseline: State | null = null;
+    let opened = Boolean(mobileBaseline.current);
+    let reconnectBaseline: State | null = mobileBaseline.current;
+    mobileBaseline.current = null;
+    let disposed = false;
     stream.onopen = () => {
       setConnected(true);
       const reconnect = opened;
@@ -418,7 +542,7 @@ export default function Home() {
           let after = messageCursor(prior.messages, viewerId, scope);
           if (!after && 'peer' in scope)
             after = Math.max(0, ...prior.messages.map((m) => m.id));
-          while (true) {
+          while (!disposed) {
             const query = new URLSearchParams({
               ...scope,
               after: String(after),
@@ -470,10 +594,11 @@ export default function Home() {
       cue(data.kind === 'join' ? 'join' : 'message', soundRef.current);
     });
     return () => {
+      disposed = true;
       stream.close();
       setConnected(false);
     };
-  }, [viewerId, refresh, applyState]);
+  }, [viewerId, refresh, applyState, phoneBackground, streamEpoch]);
   useEffect(() => {
     if (scrollRestore.current && log.current) {
       followMessages.current = false;
@@ -596,7 +721,13 @@ export default function Home() {
           image,
         ]);
         if (pendingSend.current?.key !== key)
-          pendingSend.current = { key, nonce: crypto.randomUUID() };
+          pendingSend.current = {
+            key,
+            nonce:
+              isAndroidApp() && viewerId
+                ? (await mobileSendIntent(localStorage, viewerId, key)).nonce
+                : crypto.randomUUID(),
+          };
         await api('messages', {
           text,
           recipient: recipient?.id,
@@ -605,6 +736,13 @@ export default function Home() {
           image,
           nonce: pendingSend.current.nonce,
         });
+        if (isAndroidApp() && viewerId)
+          acknowledgeMobileSend(
+            localStorage,
+            viewerId,
+            pendingSend.current.nonce,
+            draftScope,
+          );
         pendingSend.current = null;
         setSelectedGif(null);
         setSelectedImage(null);
@@ -694,7 +832,13 @@ export default function Home() {
       if (kind === 'action') content = text.slice(4);
       const key = JSON.stringify([to || channel, content, kind]);
       if (pendingSend.current?.key !== key)
-        pendingSend.current = { key, nonce: crypto.randomUUID() };
+        pendingSend.current = {
+          key,
+          nonce:
+            isAndroidApp() && viewerId
+              ? (await mobileSendIntent(localStorage, viewerId, key)).nonce
+              : crypto.randomUUID(),
+        };
       await api('messages', {
         text: content,
         recipient: to,
@@ -702,6 +846,13 @@ export default function Home() {
         kind,
         nonce: pendingSend.current.nonce,
       });
+      if (isAndroidApp() && viewerId)
+        acknowledgeMobileSend(
+          localStorage,
+          viewerId,
+          pendingSend.current.nonce,
+          draftScope,
+        );
       pendingSend.current = null;
       setDraft('');
       await refresh();
@@ -878,6 +1029,21 @@ export default function Home() {
                 state.me
                   ? void act(async () => {
                       await api('logout', {});
+                      if (isAndroidApp()) {
+                        phoneCommand('session', { account: '' });
+                        try {
+                          for (const key of Object.keys(localStorage))
+                            if (
+                              key.startsWith(`nexus-draft:${state.me!.id}:`) ||
+                              key === `nexus-send:${state.me!.id}`
+                            )
+                              localStorage.removeItem(key);
+                        } catch {
+                          /* Logout still completes if device storage is unavailable. */
+                        }
+                      }
+                      pendingSend.current = null;
+                      setDraft('');
                       setState(initial);
                       setRecipient(null);
                       setEvents([]);
@@ -1095,8 +1261,16 @@ export default function Home() {
                     </p>
                   </div>
                   {timeline.map((message) =>
-                    message.kind === 'event' ? (
-                      <p className="event-line" key={message.id}>
+                    message.kind === 'event' ||
+                    message.messageKind === 'event' ? (
+                      <p
+                        className={
+                          message.kind === 'message'
+                            ? 'event-line deployment-announcement'
+                            : 'event-line'
+                        }
+                        key={message.id}
+                      >
                         » {message.text}
                       </p>
                     ) : (
@@ -1991,6 +2165,7 @@ export default function Home() {
               );
             })()}
           {panel === 'admin' && !!state.me?.isAdmin && <AdminPanel />}
+          {panel === 'settings' && <div id="phone-notification-options" />}
           {panel === 'settings' && state.me && state.community && (
             <details className="channel-options">
               <summary>Channel settings · {channel}</summary>
@@ -2080,6 +2255,7 @@ export default function Home() {
           )}
         </DialogContent>
       </Dialog>
+      <PhoneNotifications userId={viewerId} visible={panel === 'settings'} />
     </main>
   );
 }

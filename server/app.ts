@@ -1,4 +1,5 @@
 import { parseImage } from './images.ts';
+import { createPush, type PushSender } from './push.ts';
 import {
   clientAddress,
   normalizeIP,
@@ -39,6 +40,7 @@ export type Config = VoiceConfig & {
   serverName: string;
   log?: boolean;
   giphyApiKey?: string;
+  pushSender?: PushSender;
 };
 type Session = { user: User; hash: string; expires: number };
 type Client = { response: ServerResponse; session: Session };
@@ -152,6 +154,7 @@ export function createApp(config: Config) {
     canAccess: community.canAccess,
     online,
   });
+  const push = createPush(db, { canAccess: community.canAccess, shouldNotify: community.shouldNotify, fail }, config.pushSender);
   function stateFor(id?: string) {
     const channelRows = community.channelList(id);
     const base = {
@@ -572,6 +575,15 @@ export function createApp(config: Config) {
             'Content-Security-Policy': "default-src 'none'; sandbox",
           });
           response.end(image.data as Uint8Array);
+          return;
+        }
+        if (pathname === '/api/push' && request.method === 'GET') {
+          json(response, 200, { enabled: push.enabled });
+          return;
+        }
+        if (pathname === '/api/push' && request.method === 'POST') {
+          rate(`push:${session.user.id}`, 30, 60_000);
+          json(response, 200, push.register(session, await body(request)));
           return;
         }
         if (pathname === '/api/gif-config' && request.method === 'GET') {
@@ -1170,6 +1182,7 @@ export function createApp(config: Config) {
               db.prepare(
                 'INSERT INTO message_images(message_id,name,mime,hash,data) VALUES (?,?,?,?,?)',
               ).run(messageId, image.name, image.mime, image.hash, image.bytes);
+            push.enqueue(messageId);
             db.exec('COMMIT');
           } catch (error) {
             db.exec('ROLLBACK');
@@ -1297,6 +1310,7 @@ export function createApp(config: Config) {
     clearInterval(heartbeat);
     clearInterval(blackjackTimer);
     voice.close();
+    await push.close();
     for (const client of clients) client.response.destroy();
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
@@ -1305,5 +1319,5 @@ export function createApp(config: Config) {
     db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
     db.close();
   }
-  return { server, close, db };
+  return { server, close, db, flushPush: push.flush };
 }

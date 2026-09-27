@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff } from 'lucide-react';
 import '@/lib/desktop';
+import { isAndroidApp } from '@/lib/mobile';
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,19 @@ export function VoicePanel({
     playbackBlocked: false,
   });
   const [joining, setJoining] = useState(false);
+  const [phoneVoice, setPhoneVoice] = useState(false);
+  const [backgroundNotice, setBackgroundNotice] = useState(false);
+  useEffect(() => {
+    queueMicrotask(() => setPhoneVoice(isAndroidApp()));
+    const background = () => {
+      if (!isAndroidApp()) return;
+      connection.current?.stop();
+      setJoining(false);
+      setBackgroundNotice(true);
+    };
+    window.addEventListener('nexus-background', background);
+    return () => window.removeEventListener('nexus-background', background);
+  }, []);
   const [voiceChannel, setVoiceChannel] = useState(channel);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -110,6 +124,7 @@ export function VoicePanel({
     ? view.members
     : members.filter((person) => person.channel === channel);
   async function join() {
+    setBackgroundNotice(false);
     connection.current?.stop();
     setJoining(true);
     setVoiceChannel(channel);
@@ -129,6 +144,13 @@ export function VoicePanel({
       className="voice-panel"
       aria-label={`Voice in ${view.joined ? voiceChannel : channel}`}
     >
+      {phoneVoice && (
+        <p className="voice-mobile-note">
+          {backgroundNotice
+            ? "Voice ended when Nexus went into the background. Join again when you're ready."
+            : 'Voice stays connected while Nexus is open. Switching apps or locking your phone ends voice.'}
+        </p>
+      )}
       <div className="voice-controls">
         <span className="voice-heading">
           <Headphones size={15} />{' '}
@@ -175,7 +197,7 @@ export function VoicePanel({
               onClick={() => void join()}
             >
               <Mic size={14} />
-              {joining ? 'ConnectingÃ¢â‚¬Â¦' : 'Join voice'}
+              {joining ? 'Connecting...' : 'Join voice'}
             </button>
           )}
         </span>
@@ -275,14 +297,14 @@ export function VoicePanel({
         ) : (
           <span className="voice-empty">
             {userId
-              ? 'No one in voice. Join when youÃ¢â‚¬â„¢re ready.'
+              ? "No one in voice. Join when you're ready."
               : 'Connect to join voice.'}
           </span>
         )}
       </div>
       {view.deafened && (
         <output className="voice-deafened">
-          Incoming voices silenced Ã‚· Your microphone is{' '}
+          Incoming voices silenced · Your microphone is{' '}
           {view.muted ? 'muted' : 'still on'}
         </output>
       )}

@@ -780,7 +780,16 @@ button:hover {
   gap: 8px;
 }
 .bj-leaderboard details:not(.bj-stat-notes) > summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: baseline;
+  padding: 8px 0;
+  line-height: 1.4;
+}
+.bj-leaderboard details:not(.bj-stat-notes) > summary > strong {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .bj-leaderboard summary:focus-visible {
   outline: 2px solid #c7bf84;
@@ -2867,3 +2876,45 @@ button:hover {
     animation: none;
   }
 }
+
+.bj-recent {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+}
+.bj-result {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid currentColor;
+  font: bold 11px monospace;
+  background: #0b1008;
+}
+.bj-result-win {
+  color: #76ff03;
+}
+.bj-result-push {
+  color: #ffd600;
+}
+.bj-result-loss {
+  color: #ff5277;
+}
+.bj-recent-empty {
+  color: #a4ad92;
+  font-size: 10px;
+}
+
+.deployment-announcement {
+  color: #6ce5ff;
+  background: #15303a;
+  border-left: 3px solid #6ce5ff;
+  padding: 10px 12px;
+  margin: 12px 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.phone-notifications { display: grid; gap: 12px; padding: 16px 0; }
+.phone-notifications label { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.phone-notifications input { width: auto; }
+.phone-notifications p, .voice-mobile-note { font-size: 14px; line-height: 1.5; }

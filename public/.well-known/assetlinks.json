@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "sha256_cert_fingerprints": [
+        "45:69:50:E9:1A:82:54:9B:8F:68:5E:0C:3E:5C:12:AD:D8:7F:9F:FD:DF:A1:4D:51:70:E5:28:FA:14:2B:99:F0"
+      ],
+      "package_name": "net.nexuschat.android",
+      "namespace": "android_app"
+    }
+  }
+]

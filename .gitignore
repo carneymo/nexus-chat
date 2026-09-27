@@ -44,3 +44,7 @@ next-env.d.ts
 # Python cache
 __pycache__/
 *.pyc
+
+# Server-only Firebase credentials (store outside the repository in production).
+*service-account*.json
+firebase-admin*.json

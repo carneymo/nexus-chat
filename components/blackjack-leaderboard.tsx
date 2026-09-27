@@ -19,7 +19,34 @@ export function BlackjackLeaderboard({
           <details key={player.id}>
             <summary>
               <span className="bj-rank">{index === 0 ? '♛' : rank}</span>
-              <span className="bj-leader-name">{player.name}</span>
+              <span className="bj-leader-name">
+                {player.name}
+                <span
+                  className="bj-recent"
+                  aria-label="Last five hands, newest first"
+                  title="Last five hands · newest first"
+                >
+                  {player.recentHands?.length ? (
+                    player.recentHands.map((result, hand) => (
+                      <span
+                        key={hand}
+                        className={`bj-result bj-result-${result}`}
+                        aria-label={
+                          result === 'win'
+                            ? 'Won'
+                            : result === 'push'
+                              ? 'Pushed'
+                              : 'Lost'
+                        }
+                      >
+                        {result === 'win' ? 'W' : result === 'push' ? 'P' : 'L'}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="bj-recent-empty">No recent hands</span>
+                  )}
+                </span>
+              </span>
               <strong>{player.credits.toLocaleString()}</strong>
             </summary>
             <dl>

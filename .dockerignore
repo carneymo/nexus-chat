@@ -9,3 +9,8 @@ backups
 .vinext
 .wrangler
 *.tsbuildinfo
+*service-account*.json
+firebase-admin*.json
+
+# Native client and its private signing material are never part of the server image.
+android/
