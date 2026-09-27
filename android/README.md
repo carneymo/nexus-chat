@@ -20,7 +20,7 @@ There is no device allowlist and no phone serial number is collected or needed.
 
 ## Install
 
-Share only `releases/Nexus-Chat-0.1.1-release.apk` and optionally its SHA-256 file.
+Share only `releases/Nexus-Chat-0.1.2-release.apk` and optionally its SHA-256 file.
 Download it on the phone, allow installation from that browser when prompted, and install.
 Use the existing Nexus account. The app's login is separate from Chrome's login.
 On Samsung, Auto Blocker may prevent sideloading; follow the phone's installation prompt/settings
