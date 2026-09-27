@@ -248,6 +248,35 @@ void test('phone registration, authorized notifications, retries and session rev
       app.db.prepare('SELECT count(*) AS n FROM push_devices').get()!.n,
       0,
     );
+    invalidToken = false;
+    const beforeLobby = delivered.length;
+    await request('push', newCookie, { token, lobby: true, mentions: false });
+    await request('channel', alice.cookie, {
+      name: 'The Lobby',
+      existingOnly: true,
+    });
+    await request('messages', alice.cookie, {
+      text: 'An ordinary lobby message',
+    });
+    await app.flushPush();
+    assert.equal(delivered.length, beforeLobby + 1);
+    assert.equal(delivered.at(-1)!.data.kind, 'channel');
+    assert.match(delivered.at(-1)!.data.link, /channel=The\+Lobby/);
+    assert.equal(
+      JSON.stringify(delivered.at(-1)).includes('An ordinary lobby message'),
+      false,
+    );
+    await request('messages', alice.cookie, { text: 'Mute before delivery' });
+    app.db.prepare("UPDATE users SET presence='dnd' WHERE id=?").run(bob.id);
+    await app.flushPush();
+    assert.equal(delivered.length, beforeLobby + 1);
+    app.db.prepare("UPDATE users SET presence='online' WHERE id=?").run(bob.id);
+    await request('push', newCookie, { token, lobby: false, mentions: false });
+    await request('messages', alice.cookie, {
+      text: 'Lobby alerts switched off',
+    });
+    await app.flushPush();
+    assert.equal(delivered.length, beforeLobby + 1);
   } finally {
     await app.close();
     rmSync(directory, { recursive: true, force: true });

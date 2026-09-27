@@ -36,6 +36,7 @@ export type CommunityState = {
     notify: number;
   }[];
   unread: { peer: string; count: number }[];
+  conversations?: { peer: string; lastMessageAt: number }[];
   activities: {
     id: string;
     host: string;

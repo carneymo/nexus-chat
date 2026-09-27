@@ -17,8 +17,8 @@ object PhoneState {
     fun preferences(context: Context) = context.getSharedPreferences("nexus_phone", Context.MODE_PRIVATE)
     fun createChannel(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Whispers and mentions", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Private message and @handle mention alerts. Message text stays inside Nexus."
+            NotificationChannel(CHANNEL, "Nexus messages", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Whispers, mentions and optional lobby alerts. Message text stays inside Nexus."
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             }
         )
@@ -37,7 +37,7 @@ class NexusMessagingService : FirebaseMessagingService() {
         if (PhoneState.foreground || !prefs.getBoolean("notifications_enabled", false) ||
             data["account"].isNullOrEmpty() || data["account"] != prefs.getString("account", null)) return
         val kind = data["kind"]
-        if (kind != "dm" && kind != "mention") return
+        if (kind != "dm" && kind != "mention" && kind != "channel") return
         val path = data["link"] ?: return
         if (!path.startsWith("/#")) return
         val link = LinkPolicy.appLink(BuildConfig.NEXUS_ORIGIN + path) ?: return
@@ -54,7 +54,11 @@ class NexusMessagingService : FirebaseMessagingService() {
         val notification = NotificationCompat.Builder(this, PhoneState.CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Nexus Chat")
-            .setContentText(if (kind == "dm") "You have a new whisper." else "You were mentioned in a channel.")
+            .setContentText(when (kind) {
+                "dm" -> "You have a new whisper."
+                "channel" -> "There is a new message in The Lobby."
+                else -> "You were mentioned in a channel."
+            })
             .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE).build()

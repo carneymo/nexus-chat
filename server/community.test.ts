@@ -355,6 +355,22 @@ void test('community permissions, persistence, delivery and session concurrency'
             (u: { peer: string }) => u.peer === a.id,
           ),
         );
+        // Reading a whisper must not remove its conversation from either inbox.
+        for (const [viewer, peer] of [
+          [a, b],
+          [b, a],
+        ]) {
+          const conversations = (await request('state', viewer.cookie)).data
+            .community.conversations!;
+          assert.ok(
+            conversations.some(
+              (entry) => entry.peer === peer.id && entry.lastMessageAt > 0,
+            ),
+          );
+        }
+        const outsiders = (await request('state', e.cookie)).data.community
+          .conversations!;
+        assert.ok(!outsiders.some((entry) => entry.peer === b.id));
         await mutate(b, {
           action: 'peer-preferences',
           peer: a.id,

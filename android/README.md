@@ -11,7 +11,7 @@ previous version. No Play Store listing is needed.
 - Native microphone permission, Android Back handling, keyboard/system-bar insets and external-link confirmation.
 - Foreground voice. Locking the phone or switching apps ends voice; rejoin explicitly.
 - Text drafts per account/conversation and catchup on resume in the updated web frontend.
-- FCM notification integration for whispers/DMs and exact `@handle` mentions. Other channel messages stay quiet.
+- FCM notification integration for whispers/DMs, exact `@handle` mentions and optional Lobby messages.
 - Notification taps open their conversation; account and channel permissions are checked again.
 
 Minimum Android is 9 (API 28); target/compile SDK is Android 16 (API 36).
@@ -20,7 +20,7 @@ There is no device allowlist and no phone serial number is collected or needed.
 
 ## Install
 
-Share only `releases/Nexus-Chat-0.1.0-release.apk` and optionally its SHA-256 file.
+Share only `releases/Nexus-Chat-0.1.1-release.apk` and optionally its SHA-256 file.
 Download it on the phone, allow installation from that browser when prompted, and install.
 Use the existing Nexus account. The app's login is separate from Chrome's login.
 On Samsung, Auto Blocker may prevent sideloading; follow the phone's installation prompt/settings
@@ -47,7 +47,7 @@ the backend/web changes in the same repository to be deployed.
 
 Never put the service-account JSON into the APK, `public/`, source control or a shared download.
 Firebase receives device tokens and routing metadata (account ID, sender ID or channel name,
-message ID), not message text. Android displays generic whisper/mention notifications.
+message ID), not message text. Android displays generic whisper, mention and Lobby notifications.
 
 Sources: [Firebase Android setup](https://firebase.google.com/docs/cloud-messaging/android/get-started),
 [HTTP v1 authorization](https://firebase.google.com/docs/cloud-messaging/send/v1-api).
@@ -95,7 +95,8 @@ On each Samsung (and the third phone when available):
 5. Join voice across two networks, grant microphone access, test mute/deafen and speaker/Bluetooth audio.
    Lock the phone or switch apps: verify the microphone indicator stops and voice requires rejoining.
 6. With Firebase configured, enable notifications. Background the app and send a whisper and an
-   `@handle` mention. Verify generic notifications, correct tap destination, and no ordinary channel alerts.
+   `@handle` mention and Lobby message. Verify generic notifications and correct tap destination.
+   Disable Lobby notifications and confirm ordinary Lobby messages stay quiet; other channels remain mention-only.
 7. Verify DND/mute/block, revoked private-channel access, notification permission denial, logout,
    account switching and an expired session do not expose another account's notifications.
 8. Install a newer APK signed with the same key over this version; confirm login and preferences survive.

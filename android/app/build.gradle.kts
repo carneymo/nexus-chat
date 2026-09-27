@@ -17,8 +17,8 @@ android {
         applicationId = "net.nexuschat.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
         buildConfigField("boolean", "PUSH_CONFIGURED", firebaseConfigured.toString())
         buildConfigField("String", "NEXUS_ORIGIN", "\"https://nexus-chat.net\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

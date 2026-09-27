@@ -4,7 +4,7 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $projectRoot '.tools/sdk' }
 $adb = Join-Path $sdk 'platform-tools/adb.exe'
 if (-not (Test-Path -LiteralPath $adb)) { throw 'Android platform-tools are missing. Set ANDROID_HOME to your SDK.' }
-if (-not $ApkPath) { $ApkPath = Join-Path $projectRoot 'releases/Nexus-Chat-0.1.0-release.apk' }
+if (-not $ApkPath) { $ApkPath = Join-Path $projectRoot 'releases/Nexus-Chat-0.1.1-release.apk' }
 if (-not (Test-Path -LiteralPath $ApkPath)) { throw 'Build the release APK first.' }
 if (-not (Test-Path -LiteralPath "$ApkPath.sha256")) { throw 'APK checksum sidecar is missing. Rebuild the APK.' }
 $expected = ((Get-Content -Raw -LiteralPath "$ApkPath.sha256").Trim() -split '\s+')[0]

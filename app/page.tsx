@@ -1,4 +1,5 @@
 'use client';
+import { WhispersPanel } from '@/components/whispers-panel';
 /* GIPHY requires direct media URLs; image optimization/proxying is prohibited. */
 /* eslint-disable @next/next/no-img-element */
 import {
@@ -116,6 +117,7 @@ type Panel =
   | 'connect'
   | 'channels'
   | 'create'
+  | 'whispers'
   | 'friends'
   | 'settings'
   | 'admin'
@@ -801,7 +803,7 @@ export default function Home() {
       return;
     }
     if (text === '/w') {
-      open('friends');
+      open('whispers');
       setDraft('');
       return;
     }
@@ -913,7 +915,9 @@ export default function Home() {
   function whisper(member: Member) {
     setRecipient(member);
     setPanel(null);
-    input.current?.focus();
+    setMobileTable(false);
+    setMobileMenu(false);
+    requestAnimationFrame(() => input.current?.focus());
   }
   useEffect(() => {
     if (!viewerId || !recipient?.id || document.visibilityState !== 'visible')
@@ -976,6 +980,15 @@ export default function Home() {
   );
   const whisperCount =
     state.community?.unread.reduce((total, u) => total + u.count, 0) || 0;
+
+  useEffect(() => {
+    document.title = whisperCount
+      ? `(${whisperCount}) New whispers - Nexus`
+      : 'Nexus - Your private gateway';
+    return () => {
+      document.title = 'Nexus - Your private gateway';
+    };
+  }, [whisperCount]);
 
   async function saveProfile(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1278,6 +1291,21 @@ export default function Home() {
               <div className="chat-view-controls">
                 <button
                   type="button"
+                  className={
+                    whisperCount
+                      ? 'whisper-shortcut has-unread'
+                      : 'whisper-shortcut'
+                  }
+                  onClick={() => open('whispers')}
+                  aria-label={`Whispers, ${whisperCount} unread`}
+                >
+                  <Lock size={14} /> Whispers{' '}
+                  {whisperCount > 0 && (
+                    <span className="unread-badge">{whisperCount}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
                   aria-pressed={chatFocus}
                   onClick={() => {
                     setChatFocus(!chatFocus);
@@ -1304,6 +1332,32 @@ export default function Home() {
                 </button>
               </div>
             </header>
+            {whisperCount > 0 && (
+              <output className="whisper-alert" aria-live="polite">
+                <span>
+                  {whisperCount} unread{' '}
+                  {whisperCount === 1 ? 'whisper' : 'whispers'}
+                  {state.community?.unread.length === 1
+                    ? ` from ${state.members.find((member) => member.id === state.community?.unread[0].peer)?.name || 'a member'}`
+                    : ''}
+                </span>
+                <button
+                  onClick={() => {
+                    const entries = state.community?.unread || [];
+                    const sender =
+                      entries.length === 1
+                        ? state.members.find(
+                            (member) => member.id === entries[0].peer,
+                          )
+                        : undefined;
+                    if (sender) whisper(sender);
+                    else open('whispers');
+                  }}
+                >
+                  Read {whisperCount === 1 ? 'whisper' : 'whispers'}
+                </button>
+              </output>
+            )}
             <VoicePanel
               key={viewerId}
               channel={channel}
@@ -1692,7 +1746,8 @@ export default function Home() {
                       }
                     }}
                     ref={input}
-                    disabled={busy}
+                    readOnly={busy}
+                    aria-busy={busy}
                     aria-label="Message"
                     placeholder={
                       state.me
@@ -1895,7 +1950,7 @@ export default function Home() {
             <button
               className="whisper-button"
               onClick={() =>
-                recipient ? input.current?.focus() : open('friends')
+                recipient ? input.current?.focus() : open('whispers')
               }
             >
               <Lock size={14} /> Whisper{' '}
@@ -1956,23 +2011,25 @@ export default function Home() {
           initialFocus={panel === 'channels' ? channelPickerTitle : undefined}
         >
           <DialogTitle ref={channelPickerTitle} tabIndex={-1}>
-            {panel === 'search'
-              ? 'Search conversation'
-              : panel === 'connect'
-                ? authMode === 'register'
-                  ? 'Create account'
-                  : 'Welcome back'
-                : panel === 'channels'
-                  ? 'Select channel'
-                  : panel === 'create'
-                    ? 'Create channel'
-                    : panel === 'friends'
-                      ? 'Your friends'
-                      : panel === 'profile'
-                        ? 'Member profile'
-                        : panel === 'admin'
-                          ? 'Server management'
-                          : 'Terminal options'}
+            {panel === 'whispers'
+              ? 'Whispers'
+              : panel === 'search'
+                ? 'Search conversation'
+                : panel === 'connect'
+                  ? authMode === 'register'
+                    ? 'Create account'
+                    : 'Welcome back'
+                  : panel === 'channels'
+                    ? 'Select channel'
+                    : panel === 'create'
+                      ? 'Create channel'
+                      : panel === 'friends'
+                        ? 'Your friends'
+                        : panel === 'profile'
+                          ? 'Member profile'
+                          : panel === 'admin'
+                            ? 'Server management'
+                            : 'Terminal options'}
           </DialogTitle>
           {error && (
             <p role="alert" className="error-strip">
@@ -1988,7 +2045,9 @@ export default function Home() {
                   ? 'Open a new channel for your crew.'
                   : panel === 'friends'
                     ? 'Select a friend to open a private whisper.'
-                    : 'Tune your corner of the network.'}
+                    : panel === 'whispers'
+                      ? 'Open a conversation or start a new whisper.'
+                      : 'Tune your corner of the network.'}
           </DialogDescription>
           {panel === 'connect' && authForm}
           {panel === 'search' && (
@@ -2110,6 +2169,14 @@ export default function Home() {
               </button>
             </form>
           )}
+          {panel === 'whispers' && state.me && state.community && (
+            <WhispersPanel
+              members={state.members}
+              userId={state.me.id}
+              community={state.community}
+              open={whisper}
+            />
+          )}
           {panel === 'friends' && state.me && state.community && (
             <FriendsPanel
               state={state.community}
@@ -2152,10 +2219,7 @@ export default function Home() {
                     </a>
                   )}
                   {person.id === state.me?.id ? (
-                    <form
-                      className="dialog-form"
-                      onSubmit={saveProfile}
-                    >
+                    <form className="dialog-form" onSubmit={saveProfile}>
                       <label>
                         Display name
                         <input

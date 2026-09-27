@@ -11,7 +11,11 @@ export function PhoneNotifications({
   visible: boolean;
 }) {
   const [status, setStatus] = useState<PhoneStatus | null>(null);
-  const [settings, setSettings] = useState({ dm: true, mentions: true });
+  const [settings, setSettings] = useState({
+    dm: true,
+    mentions: true,
+    lobby: true,
+  });
   const [readyFor, setReadyFor] = useState<string>();
   const [registration, setRegistration] = useState('');
   const [resume, setResume] = useState(0);
@@ -49,12 +53,16 @@ export function PhoneNotifications({
   useEffect(() => {
     if (!isAndroidApp()) return;
     phoneCommand('session', { account: userId || '' });
-    let saved = { dm: true, mentions: true };
+    let saved = { dm: true, mentions: true, lobby: true };
     try {
       const value = JSON.parse(
         localStorage.getItem(`nexus-push:${userId}`) || '{}',
       );
-      saved = { dm: value.dm !== false, mentions: value.mentions !== false };
+      saved = {
+        dm: value.dm !== false,
+        mentions: value.mentions !== false,
+        lobby: value.lobby !== false,
+      };
     } catch {
       /* Default preferences survive unavailable storage. */
     }
@@ -97,6 +105,7 @@ export function PhoneNotifications({
           token: status!.token,
           dm: settings.dm,
           mentions: settings.mentions,
+          lobby: settings.lobby,
           ...(enabled ? {} : { action: 'remove' }),
         }),
       });
@@ -129,9 +138,10 @@ export function PhoneNotifications({
     status?.permission,
     settings.dm,
     settings.mentions,
+    settings.lobby,
     resume,
   ]);
-  function update(key: 'dm' | 'mentions', value: boolean) {
+  function update(key: 'dm' | 'mentions' | 'lobby', value: boolean) {
     const next = { ...settings, [key]: value };
     setSettings(next);
     try {
@@ -167,9 +177,17 @@ export function PhoneNotifications({
             />{' '}
             Mentions of my @handle
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={settings.lobby}
+              onChange={(event) => update('lobby', event.target.checked)}
+            />{' '}
+            New messages in The Lobby
+          </label>
           <p>
-            Other channel messages stay quiet. Message text stays inside Nexus.
-            Blocks, mutes, and Do Not Disturb apply.
+            Other channels stay quiet unless you are mentioned. Message text
+            stays inside Nexus. Blocks, mutes, and Do Not Disturb apply.
           </p>
           <button
             type="button"

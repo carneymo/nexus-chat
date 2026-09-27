@@ -2942,3 +2942,13 @@ button:hover {
 .auth-card > p {
   margin-bottom: 20px;
 }
+
+.whisper-alert { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; background: #183847; color: #d9f7ff; border-bottom: 1px solid #4ea7be; flex-shrink: 0; }
+.whisper-alert button, .whisper-shortcut.has-unread { background: #28515c; color: #fff; border: 1px solid #72c6d6; }
+.unread-badge { display: inline-block; border-radius: 12px; padding: 2px 7px; background: #a8e875; color: #13200b; font-size: 12px; font-weight: 700; }
+.whisper-shortcut { display: inline-flex; align-items: center; gap: 6px; }
+.whispers-inbox { display: grid; gap: 10px; }
+.whispers-inbox input { display: block; width: 100%; margin-top: 8px; padding: 10px; background: #111a0c; border: 1px solid #6d7057; }
+.whisper-conversation { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; text-align: left; border: 1px solid #6d7057; background: #202b1b; }
+.whisper-conversation small { display: block; margin-top: 4px; }
+@media (max-width: 800px) { .chat-view-controls .whisper-shortcut { display: inline-flex; } .whisper-alert { font-size: 13px; } }

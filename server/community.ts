@@ -322,6 +322,9 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
         .prepare('SELECT * FROM peer_preferences WHERE user_id=?')
         .all(id),
       unread,
+      conversations: db.prepare(`SELECT CASE WHEN user_id=? THEN recipient ELSE user_id END AS peer,
+        MAX(created_at) AS lastMessageAt FROM messages WHERE recipient IS NOT NULL
+        AND (user_id=? OR recipient=?) GROUP BY peer ORDER BY lastMessageAt DESC`).all(id, id, id),
       activities,
       settings: {
         homeChannel: me.home_channel,

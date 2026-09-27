@@ -1192,7 +1192,7 @@ export function createApp(config: Config) {
           broadcast();
           if (recipient)
             notice(
-              `${session.user.name} sent you a whisper. Open Friends to reply.`,
+              `${session.user.name} sent you a whisper. Open Whispers to reply.`,
               'message',
               (client) =>
                 client.session.user.id === recipient &&

@@ -20,6 +20,7 @@ type Device = {
   session_hash: string;
   dm: number;
   mentions: number;
+  lobby: number;
 };
 type Dependencies = {
   canAccess: (id: string, channel: string) => boolean;
@@ -56,6 +57,15 @@ export function createPush(
       attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL,
       PRIMARY KEY(token,message_id));
   `);
+  if (
+    !db
+      .prepare('PRAGMA table_info(push_devices)')
+      .all()
+      .some((column) => column.name === 'lobby')
+  )
+    db.exec(
+      'ALTER TABLE push_devices ADD COLUMN lobby INTEGER NOT NULL DEFAULT 0',
+    );
   const { fail } = dependencies;
   function register(session: Session, data: Record<string, unknown>) {
     const token = data.token;
@@ -70,7 +80,7 @@ export function createPush(
     }
     if (!send)
       fail(503, 'Phone notifications are not configured on this server yet.');
-    for (const key of ['dm', 'mentions'])
+    for (const key of ['dm', 'mentions', 'lobby'])
       if (data[key] !== undefined && typeof data[key] !== 'boolean')
         fail(400, 'Choose enabled or disabled.');
     const prior = db
@@ -90,13 +100,14 @@ export function createPush(
       fail(409, 'Too many registered phones. Sign out on another phone first.');
     if (prior && prior.session_hash !== session.hash)
       db.prepare('DELETE FROM push_outbox WHERE token=?').run(validToken);
-    db.prepare(`INSERT INTO push_devices(token,user_id,session_hash,dm,mentions,updated_at) VALUES(?,?,?,?,?,?)
-      ON CONFLICT(token) DO UPDATE SET session_hash=excluded.session_hash,dm=excluded.dm,mentions=excluded.mentions,updated_at=excluded.updated_at`).run(
+    db.prepare(`INSERT INTO push_devices(token,user_id,session_hash,dm,mentions,lobby,updated_at) VALUES(?,?,?,?,?,?,?)
+      ON CONFLICT(token) DO UPDATE SET session_hash=excluded.session_hash,dm=excluded.dm,mentions=excluded.mentions,lobby=excluded.lobby,updated_at=excluded.updated_at`).run(
       validToken,
       session.user.id,
       session.hash,
       Number(data.dm !== false),
       Number(data.mentions !== false),
+      Number(data.lobby === true),
       Date.now(),
     );
     return { enabled: true };
@@ -109,6 +120,8 @@ export function createPush(
       return false;
     if (message.recipient)
       return Boolean(device.dm && device.user_id === message.recipient);
+    if (!dependencies.canAccess(device.user_id, message.channel)) return false;
+    if (device.lobby && message.channel === 'The Lobby') return true;
     const user = db
       .prepare('SELECT name FROM users WHERE id=?')
       .get(device.user_id);
@@ -186,7 +199,11 @@ export function createPush(
           data: {
             account: device.user_id,
             link: `/#${params}`,
-            kind: message.recipient ? 'dm' : 'mention',
+            kind: message.recipient
+              ? 'dm'
+              : device.lobby && message.channel === 'The Lobby'
+                ? 'channel'
+                : 'mention',
             messageId: String(message.id),
           },
         });
