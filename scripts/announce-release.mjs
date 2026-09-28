@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { releaseTimestamp } from './release-format.mjs';
 
 const [release, summary, flag] = process.argv.slice(2);
 const prepare = release === '--prepare-channel';
@@ -67,7 +68,7 @@ try {
       console.log(JSON.stringify({ prepared: true, channel: 'Releases' }));
     else {
       const now = Date.now();
-      const text = `Nexus release: ${summary.trim()} Refresh your browser or reopen Nexus to load the update. Release ${release}.`;
+      const text = `Nexus release (${releaseTimestamp(now)}): ${summary.trim()} Refresh your browser or reopen Nexus to load the update. Release ${release}.`;
       db.prepare(
         "INSERT INTO messages(user_id,channel,text,created_at,kind) VALUES(?,?,?,?,'event')",
       ).run(admin.id, 'Releases', text, now);
