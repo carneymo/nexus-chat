@@ -312,7 +312,7 @@ export function createCommunity(db: DatabaseSync, dependencies: Dependencies) {
       }));
     const unread = db
       .prepare(
-        `SELECT m.user_id AS peer,COUNT(*) AS count FROM messages m WHERE m.recipient=? AND m.id>COALESCE((SELECT message_id FROM read_markers WHERE user_id=? AND scope='dm:'||m.user_id),0) AND NOT EXISTS(SELECT 1 FROM peer_preferences p WHERE p.user_id=? AND p.peer_id=m.user_id AND (p.blocked=1 OR p.muted=1)) GROUP BY m.user_id`,
+        `SELECT m.user_id AS peer,COUNT(*) AS count FROM messages m JOIN users sender ON sender.id=m.user_id AND sender.disabled=0 WHERE m.recipient=? AND m.id>COALESCE((SELECT message_id FROM read_markers WHERE user_id=? AND scope='dm:'||m.user_id),0) AND NOT EXISTS(SELECT 1 FROM peer_preferences p WHERE p.user_id=? AND p.peer_id=m.user_id AND (p.blocked=1 OR p.muted=1)) GROUP BY m.user_id`,
       )
       .all(id, id, id);
     return {
