@@ -2616,10 +2616,13 @@ button:hover {
     grid-template-rows: minmax(0, 1fr);
   }
   .chat-layout .chassis {
-    max-width: none;
+    max-width: 980px;
     grid-template-rows: auto minmax(0, 1fr) auto;
     padding: 8px;
     gap: 6px;
+  }
+  .chat-layout.roster-open .chassis {
+    max-width: 1266px;
   }
   .chat-layout .hardware-top {
     min-height: 0;
