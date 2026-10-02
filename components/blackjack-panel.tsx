@@ -181,7 +181,7 @@ export function BlackjackPanel({
           ? 'Cut card reached · Fresh six-deck shoe before the next deal.'
           : table.shuffledThisRound
             ? 'Fresh six-deck shoe shuffled and cut this round.'
-            : `${table.remainingCards} cards in the shoe · Shuffle below 208 cards, between rounds.`}
+            : `${table.remainingCards} cards in the shoe · Shuffle below 104 cards, between rounds.`}
       </p>
       <div className="bj-table" key={table.round} ref={tableElement}>
         <div className="bj-dealer">
@@ -254,6 +254,9 @@ export function BlackjackPanel({
         )}
         {table.phase === 'betting' && me && (
           <>
+            <button disabled={busy} onClick={() => void act('deal')}>
+              Deal now
+            </button>
             <button disabled={busy} onClick={() => void act('cancel')}>
               Cancel bet
             </button>
@@ -295,7 +298,8 @@ export function BlackjackPanel({
           Up to four hands. Split aces get one card each; split 21 pays 1:1. No
           insurance or surrender. Bets: 10–500 in steps of 10. Six players.
           Cards deal immediately once everyone online in Blackjack has bet,
-          including when you play alone. Otherwise, betting lasts 20 seconds.
+          including when you play alone. A player with a bet can deal early;
+          otherwise, betting lasts 20 seconds.
           Returning players keep their seat order. Turns expire after 30
           seconds and automatically stand.
         </p>

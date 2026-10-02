@@ -6,6 +6,7 @@ import {
   type BlackjackStats,
 } from '../lib/blackjack-stats.ts';
 export const BLACKJACK_CHANNEL = 'Blackjack';
+const CUT_CARD_REMAINING = 104;
 export type Hand = {
   cards: number[];
   bet: number;
@@ -279,7 +280,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       t.deadline = 0;
       return;
     }
-    if (t.shoe.length < 208) {
+    if (t.shoe.length < CUT_CARD_REMAINING) {
       t.shoe = shuffle();
       t.shuffledRound = t.round + 1;
     }
@@ -385,10 +386,9 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
         t.players = t.players.filter((p) => p.id !== id);
         if (!t.players.length) t.deadline = 0;
       } else if (data.action === 'deal') {
-        fail(
-          409,
-          'Cards are dealt automatically when the betting countdown ends.',
-        );
+        if (t.phase !== 'betting' || !t.players.some((p) => p.id === id))
+          fail(409, 'Place a bet before dealing.');
+        deal(t);
       } else {
         if (t.phase !== 'playing' || t.players[t.turn]?.id !== id)
           fail(409, 'It is not your turn.');
@@ -524,7 +524,7 @@ export function createBlackjack(db: DatabaseSync, deps: Dependencies) {
       })),
       firstBettor: t.players[0]?.id,
       remainingCards: t.shoe.length,
-      shuffleNextRound: t.shoe.length < 208,
+      shuffleNextRound: t.shoe.length < CUT_CARD_REMAINING,
       shuffledThisRound: t.shuffledRound === t.round,
     };
   }

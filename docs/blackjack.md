@@ -4,7 +4,7 @@ One shared six-player table in the dedicated `Blackjack` channel. Chat and chann
 
 ## Rules
 
-- Six decks, cryptographic Fisher–Yates shuffle. Reshuffle between rounds when fewer than 208 cards remain (a conservative cut point that reserves ample cards for splits).
+- Six decks, cryptographic Fisher–Yates shuffle. Reshuffle between rounds when fewer than 104 cards remain (about two-thirds penetration).
 - Dealer stands on soft 17; checks for natural blackjack before player actions.
 - Natural blackjack pays 3:2; ordinary wins 1:1; ties return the stake.
 - Double on any initial two cards (including after splitting), one final card.

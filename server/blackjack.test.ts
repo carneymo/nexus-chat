@@ -119,6 +119,38 @@ void test('six-deck shoe and soft/hard hand totals', () => {
   assert.deepEqual(handValue([0, 5, 12]), { total: 17, soft: false });
   assert.equal(handValue([0, 13, 9]).total, 12);
 });
+void test('cut card allows a round with 104 cards and reshuffles below it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-cut-'));
+  const db = createStore(join(dir, 'test.sqlite'));
+  let shuffles = 0;
+  const game = createBlackjack(db, {
+    canAccess: () => true,
+    shuffle: () => { shuffles++; return Array(312).fill(9); },
+    fail: (_, message): never => { throw Error(message); },
+  });
+  try {
+    db.prepare("INSERT INTO users(id,name,salt,password_hash,channel) VALUES('a','a','x','x','Blackjack')").run();
+    const setShoe = (length: number) => {
+      const table = JSON.parse(String(db.prepare('SELECT state FROM blackjack_table').get()!.state));
+      table.shoe = Array(length).fill(9);
+      db.prepare('UPDATE blackjack_table SET state=?').run(JSON.stringify(table));
+    };
+    setShoe(104);
+    assert.equal(game.snapshot('a')!.shuffleNextRound, false);
+    game.act('a', { action: 'bet', bet: 20, revision: game.snapshot('a')!.revision, nonce: 'cut-first-bet-12345' });
+    game.act('a', { action: 'deal', revision: game.snapshot('a')!.revision, nonce: 'cut-first-deal-12345' });
+    assert.equal(shuffles, 0);
+    game.act('a', { action: 'stand', revision: game.snapshot('a')!.revision, nonce: 'cut-first-stand-12345' });
+    setShoe(103);
+    assert.equal(game.snapshot('a')!.shuffleNextRound, true);
+    game.act('a', { action: 'bet', bet: 20, revision: game.snapshot('a')!.revision, nonce: 'cut-second-bet-12345' });
+    game.act('a', { action: 'deal', revision: game.snapshot('a')!.revision, nonce: 'cut-second-deal-12345' });
+    assert.equal(shuffles, 1);
+  } finally {
+    db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 void test('blackjack ledger, rules, hidden cards and restart persistence', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-blackjack-'));
   let db = createStore(join(dir, 'test.sqlite'));
@@ -464,7 +496,7 @@ void test('turn ownership, insufficient credits, split limit and exactly-once da
   }
 });
 
-void test('solo bets deal once and departing spectators release the betting window', () => {
+void test('solo bets deal once and a bettor can deal past an idle spectator', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nexus-bj-solo-'));
   const db = createStore(join(dir, 'test.sqlite'));
   let clock = Date.UTC(2026, 8, 27);
@@ -507,10 +539,13 @@ void test('solo bets deal once and departing spectators release the betting wind
     assert.equal(game.snapshot('a')!.deadline, clock + 20000);
     clock += 3000;
     assert.equal(game.tick(), false);
-    online.delete('b');
-    assert.equal(game.tick(), true);
+    game.act('a', {
+      action: 'deal', revision: game.snapshot('a')!.revision,
+      nonce: 'force-deal-idle-12345',
+    });
     assert.equal(game.snapshot('a')!.phase, 'playing');
     assert.equal(game.snapshot('a')!.round, 2);
+    assert.equal(game.snapshot('a')!.players.length, 1);
     assert.equal(game.tick(), false);
   } finally {
     db.close();
@@ -546,12 +581,12 @@ void test('all present bettors deal immediately and retain seats across rounds',
     bet('a');
     assert.throws(
       () =>
-        game.act('a', {
+        game.act('b', {
           action: 'deal',
-          revision: game.snapshot('a')!.revision,
+          revision: game.snapshot('b')!.revision,
           nonce: 'blocked-early-deal-12345',
         }),
-      /automatically/,
+      /Place a bet/,
     );
     assert.equal(game.snapshot('a')!.deadline, clock + 20000);
     bet('b');
